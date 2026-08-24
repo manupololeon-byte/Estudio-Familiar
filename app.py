@@ -174,7 +174,8 @@ def guardar_stats_asignatura(ruta_asignatura, stats):
 # 1. Configuración de página
 st.set_page_config(page_title="Campus Educativo Familiar", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
 
-API_KEY = "AQ.Ab8RN6Ib45rnV8dY1WIEMzLgs0OEOJOUbe64h9iv0KUFPGjLjg" 
+# Así buscará la clave de forma privada y segura
+API_KEY = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=API_KEY)
 CARPETA_FAMILIAR = "Campus_Familiar_Datos"
 os.makedirs(CARPETA_FAMILIAR, exist_ok=True)
