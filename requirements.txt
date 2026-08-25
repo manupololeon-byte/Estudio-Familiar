@@ -5,3 +5,5 @@ fpdf
 gtts
 streamlit
 google-generativeai
+google-genai
+reportlab
