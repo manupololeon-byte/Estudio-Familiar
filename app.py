@@ -16,7 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 from reportlab.lib.units import cm
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA (OPTIMIZADA IPAD / MAC / WINDOWS) ---
 st.set_page_config(
     page_title="Campus Educativo Familiar & VIU",
     page_icon="🐕‍🦺",
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ESTILOS VISUALES ---
+# --- ESTILOS VISUALES MODERNOS Y LIMPIOS ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -33,7 +33,7 @@ st.markdown("""
     
     @keyframes petFloat {
         0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-5px); }
+        50% { transform: translateY(-4px); }
     }
     
     .chopi-header {
@@ -50,7 +50,7 @@ st.markdown("""
     }
     
     .chopi-avatar {
-        font-size: 42px;
+        font-size: 40px;
         background: #1E293B;
         border: 2px solid #F59E0B;
         border-radius: 50%;
@@ -61,26 +61,34 @@ st.markdown("""
     .mosaic-card {
         background: white;
         border: 1px solid #E2E8F0;
-        border-radius: 18px;
-        padding: 22px;
+        border-radius: 16px;
+        padding: 18px;
         text-align: center;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
-        min-height: 190px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
+        margin-bottom: 12px;
     }
-    .mosaic-card:hover {
-        transform: translateY(-5px);
-        border-color: #EA580C;
-        box-shadow: 0 14px 24px -5px rgba(234, 88, 12, 0.14);
+    
+    .flashcard-box {
+        background: white;
+        border: 2px solid #EA580C;
+        border-radius: 16px;
+        padding: 30px;
+        text-align: center;
+        min-height: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: 600;
+        color: #0F172A;
+        box-shadow: 0 8px 16px -4px rgba(234, 88, 12, 0.1);
+        margin: 15px 0;
     }
     
     .apunte-container {
         background-color: white;
         border-left: 6px solid #EA580C;
-        padding: 26px;
+        padding: 24px;
         border-radius: 14px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.03);
         line-height: 1.7;
@@ -94,13 +102,13 @@ st.markdown("""
     
     .stButton>button {
         background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
-        color: white; border-radius: 10px; border: none; font-weight: 600; padding: 10px 20px;
+        color: white; border-radius: 10px; border: none; font-weight: 600; padding: 9px 18px;
     }
     .stButton>button:hover { opacity: 0.92; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- CLIENTE GEMINI Y WORKER GLOBAL ---
+# --- CLIENTE GEMINI Y WORKER ASÍNCRONO ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=API_KEY)
@@ -110,14 +118,13 @@ except Exception:
 CARPETA_DATOS = Path("Campus_Familiar_Datos")
 CARPETA_DATOS.mkdir(exist_ok=True)
 
-# Executor a nivel de servidor (permanece activo independientemente de la navegación)
 @st.cache_resource
 def obtener_servidor_worker():
     return ThreadPoolExecutor(max_workers=3)
 
 worker_global = obtener_servidor_worker()
 
-# --- ESTADO DE SESIÓN ---
+# --- ESTADOS DE SESIÓN ---
 if "usuario_activo" not in st.session_state:
     st.session_state.usuario_activo = None
 if "asig_actual" not in st.session_state:
@@ -125,9 +132,9 @@ if "asig_actual" not in st.session_state:
 if "seccion_activa" not in st.session_state:
     st.session_state.seccion_activa = "mosaico"
 if "xp" not in st.session_state:
-    st.session_state.xp = 260
+    st.session_state.xp = 270
 
-# --- FUNCIONES DE JSON Y DISCO ---
+# --- PERSISTENCIA JSON ---
 def leer_json(ruta_f, default):
     if ruta_f.exists():
         try:
@@ -142,10 +149,10 @@ def escribir_json(ruta_f, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def obtener_archivos_materia(ruta_asig):
-    excluidos = ["apuntes_guardados.txt", "estado_sync.json", "metadata.json", "examenes_historial.json", "podcast.mp3", "guion_podcast.txt"]
+    excluidos = ["apuntes_guardados.txt", "estado_sync.json", "metadata.json", "examenes_historial.json", "podcast.mp3", "guion_podcast.txt", "flashcards.json", "guia_estudio.txt"]
     return [f for f in ruta_asig.glob("*") if f.is_file() and f.name not in excluidos]
 
-# --- GENERADOR MAESTRO DE PDF ---
+# --- GENERADOR DE PDF (ReportLab) ---
 def generar_pdf_documento(titulo_doc, subtitulo_doc, contenido_markdown):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
@@ -182,7 +189,7 @@ def generar_pdf_documento(titulo_doc, subtitulo_doc, contenido_markdown):
     buffer.seek(0)
     return buffer.getvalue()
 
-# --- TAREA EN SEGUNDO PLANO DESVINCULADA DEL NAVEGADOR ---
+# --- TAREA EN SEGUNDO PLANO A NIVEL DE SERVIDOR ---
 def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_edu, rama_bach):
     ruta_asig = Path(ruta_asig_str)
     f_estado = ruta_asig / "estado_sync.json"
@@ -196,7 +203,6 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
         for r in archivos:
             if r.suffix.lower() in [".mp3", ".m4a", ".wav", ".pdf"]:
                 sub = cliente_fondo.files.upload(file=str(r))
-                # Espera activa si es un archivo de audio pesado
                 while sub.state and sub.state.name == "PROCESSING":
                     time.sleep(3)
                     sub = cliente_fondo.files.get(name=sub.name)
@@ -209,7 +215,7 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
         elif "Castilla y León" in nivel_edu:
             ctx = f"ESTUDIANTE ESCOLAR ({nivel_edu}) - Currículo Oficial de Castilla y León (BOCYL / LOMLOE)."
         else:
-            ctx = "ESTUDIANTE UNIVERSITARIO (VIU - Grado en Historia). Rigor analítico y conceptual. Sintetiza minuciosamente los audios y documentos."
+            ctx = "ESTUDIANTE UNIVERSITARIO (VIU - Grado en Historia). Rigor analítico e historiográfico. Sintetiza minuciosamente los audios y documentos."
 
         prompt = f"""
         {ctx}
@@ -241,31 +247,30 @@ def obtener_icono_asig(nombre):
     if any(k in n for k in ["ingles", "frances"]): return "🗣️"
     return "📚"
 
-# --- CABECERA GLOBAL CON MONITOR DE PROCESOS ---
+# --- CABECERA GLOBAL CON CHOPI ---
 def render_chopi_header():
     nivel_chopi = (st.session_state.xp // 100) + 1
     
-    # Revisar si hay alguna tarea corriendo en disco
     tareas_activas = []
     for p in CARPETA_DATOS.glob("*/*"):
         if p.is_dir():
             st_info = leer_json(p / "estado_sync.json", {})
             if st_info.get("estado") == "running":
-                tareas_activas.append(f"{p.parent.name} ({p.name})")
+                tareas_activas.append(f"{p.name}")
 
     col_c1, col_c2 = st.columns([5, 1])
     with col_c1:
         aviso_fondo = ""
         if tareas_activas:
-            aviso_fondo = f"<br><span style='color: #FCD34D; font-size: 12px;'>⏳ Procesando en segundo plano continuo: {', '.join(tareas_activas)}</span>"
+            aviso_fondo = f"<br><span style='color: #FCD34D; font-size: 12px;'>⏳ Procesando en fondo: {', '.join(tareas_activas)}</span>"
             
         st.markdown(f"""
             <div class="chopi-header">
                 <div class="chopi-avatar">🐕‍🦺</div>
                 <div>
-                    <h3 style="margin:0; color: #F8FAFC;">Chopi - Tu Asistente Patterdale Terrier</h3>
+                    <h3 style="margin:0; color: #F8FAFC;">Chopi - Tu Compañero Patterdale Terrier</h3>
                     <p style="margin:2px 0 0 0; color: #94A3B8; font-size: 13px;">
-                        Nivel <b>{nivel_chopi}</b> • XP: <b>{st.session_state.xp}</b> | Procesamiento autónomo en segundo plano.{aviso_fondo}
+                        Nivel <b>{nivel_chopi}</b> • XP: <b>{st.session_state.xp}</b> | Campus de Estudio Inteligente.{aviso_fondo}
                     </p>
                 </div>
             </div>
@@ -299,12 +304,12 @@ if st.session_state.usuario_activo is None:
         c1.markdown("""
         #### 🎓 Universidad (VIU)
         * **Audios de 2 horas sin interrupciones:** Súbelos y sigue navegando; se procesan en el servidor.
-        * **Modo Estricto:** Exclusivamente centrado en tus documentos y clases.
+        * **Flashcards y Guías Rápidas:** Memorización espaciada y hojas de síntesis ejecutiva.
         * **Exportaciones completas en PDF y MP3.**
         """)
         c2.markdown("""
         #### 🎒 Colegio e Instituto (Castilla y León)
-        * **Primaria, ESO y Bachillerato:** Saberes y criterios del currículo normativo de CyL.
+        * **Primaria, ESO y Bachillerato:** Saberes y criterios normativos de CyL.
         * **Modalidades de Bachillerato:** Ciencias, Humanidades o Salud.
         * **Sin necesidad de escanear libros físicos.**
         """)
@@ -312,9 +317,9 @@ if st.session_state.usuario_activo is None:
     with tab_tut:
         st.markdown("""
         1. **Selecciona tu Perfil** abajo.
-        2. **Entra a una Asignatura** y accede a **📂 Materiales** para subir audios o PDFs.
-        3. En **✨ Cuaderno de Estudio**, pulsa **Lanzar Generación en Segundo Plano**. ¡Puedes salirte o hacer exámenes mientras tanto!
-        4. Al terminar, descarga los **Apuntes en PDF** o escucha la **Lección en MP3**.
+        2. **Entra a una Asignatura** y navega por el panel de herramientas.
+        3. En **✨ Cuaderno de Estudio**, pulsa en generar apuntes en segundo plano.
+        4. Practica con las **🗂️ Flashcards**, haz simulacros en **🎯 Exámenes** o escucha el **🎙️ Podcast**.
         """)
         
     with tab_admin:
@@ -441,18 +446,19 @@ else:
                 if st_sync.get("estado") == "running":
                     aviso_sync = "<div style='color: #EA580C; font-size: 11px; font-weight: bold; margin-top: 4px;'>⚙️ Procesando en fondo...</div>"
                 
+                # HTML completamente limpio sin saltos problemáticos
+                card_html = (
+                    f'<div class="mosaic-card">'
+                    f'<div style="font-size: 38px;">{ic}</div>'
+                    f'<h4 style="margin: 6px 0 2px 0; color: #0F172A;">{a_name}</h4>'
+                    f'{badge_examen}'
+                    f'{nota_media_txt}'
+                    f'{aviso_sync}'
+                    f'</div>'
+                )
+                
                 with cols_as[idx % 3]:
-                    st.markdown(f"""
-                        <div class="mosaic-card">
-                            <div>
-                                <div style="font-size: 38px;">{ic}</div>
-                                <h4 style="margin: 6px 0 2px 0; color: #0F172A;">{a_name}</h4>
-                                {badge_examen}
-                                {nota_media_txt}
-                                {aviso_sync}
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(card_html, unsafe_allow_html=True)
                     col_b1, col_b2 = st.columns([3, 1])
                     if col_b1.button("📂 Entrar", key=f"entrar_{a_name}", use_container_width=True):
                         st.session_state.asig_actual = a_name
@@ -464,7 +470,7 @@ else:
                         st.rerun()
 
     # --------------------------------------------------------------------------
-    # 2.2 DENTRO DE LA ASIGNATURA (MOSAICO STUDIO)
+    # 2.2 DENTRO DE LA ASIGNATURA (STUDIO GRID COMPLETO)
     # --------------------------------------------------------------------------
     else:
         asig_sel = st.session_state.asig_actual
@@ -475,7 +481,7 @@ else:
         col_nav1, col_nav2 = st.columns([1, 3])
         with col_nav1:
             if st.session_state.seccion_activa != "mosaico":
-                if st.button("⬅️ Panel Principal de Asignatura"):
+                if st.button("⬅️ Panel de la Asignatura"):
                     st.session_state.seccion_activa = "mosaico"
                     st.rerun()
             else:
@@ -502,106 +508,68 @@ else:
                 st.info(f"⏳ **Cuenta atrás:** Faltan **{delta} días** para el examen ({f_ex.strftime('%d/%m/%Y')}).")
 
         # ----------------------------------------------------------------------
-        # MOSAICO INTERACTIVO
+        # MOSAICO INTERACTIVO NOTEBOOK / STUDYFETCH
         # ----------------------------------------------------------------------
         if st.session_state.seccion_activa == "mosaico":
-            st.markdown("### 🎛️ Espacio de Estudio")
+            st.markdown("### 🎛️ Espacio de Estudio y Fuentes")
             
-            c_m1, c_m2, c_m3 = st.columns(3)
+            c_m1, c_m2, c_m3, c_m4 = st.columns(4)
             with c_m1:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">📂</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Materiales y Fuentes</h3>
-                            <p style="color: #64748B; font-size: 13px;">Sube audios de hasta 2h y PDFs.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Abrir Fuentes", key="btn_mos_mat", use_container_width=True):
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">📂</div><h4 style="margin:4px 0;">Materiales</h4><p style="color:#64748B;font-size:12px;">PDFs y audios de 2h</p></div>', unsafe_allow_html=True)
+                if st.button("Abrir Fuentes", key="b_mat", use_container_width=True):
                     st.session_state.seccion_activa = "materiales"
                     st.rerun()
 
             with c_m2:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">✨</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Cuaderno de Estudio</h3>
-                            <p style="color: #64748B; font-size: 13px;">Apuntes estructurados con descarga PDF.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Abrir Cuaderno", key="btn_mos_ap", use_container_width=True):
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">✨</div><h4 style="margin:4px 0;">Cuaderno</h4><p style="color:#64748B;font-size:12px;">Apuntes y PDF</p></div>', unsafe_allow_html=True)
+                if st.button("Ver Apuntes", key="b_ap", use_container_width=True):
                     st.session_state.seccion_activa = "apuntes"
                     st.rerun()
 
             with c_m3:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">🎙️</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Lección en Podcast</h3>
-                            <p style="color: #64748B; font-size: 13px;">Audio narrado en MP3 para escuchar donde quieras.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Abrir Podcast", key="btn_mos_pod", use_container_width=True):
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🗂️</div><h4 style="margin:4px 0;">Flashcards</h4><p style="color:#64748B;font-size:12px;">Tarjetas interactivas</p></div>', unsafe_allow_html=True)
+                if st.button("Estudiar Tarjetas", key="b_flash", use_container_width=True):
+                    st.session_state.seccion_activa = "flashcards"
+                    st.rerun()
+
+            with c_m4:
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">📋</div><h4 style="margin:4px 0;">Guía Rápida</h4><p style="color:#64748B;font-size:12px;">Briefing y glosario</p></div>', unsafe_allow_html=True)
+                if st.button("Ver Guía", key="b_guia", use_container_width=True):
+                    st.session_state.seccion_activa = "guia"
+                    st.rerun()
+
+            c_m5, c_m6, c_m7, c_m8 = st.columns(4)
+            with c_m5:
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🎙️</div><h4 style="margin:4px 0;">Podcast</h4><p style="color:#64748B;font-size:12px;">Audiolección MP3</p></div>', unsafe_allow_html=True)
+                if st.button("Escuchar Audio", key="b_pod", use_container_width=True):
                     st.session_state.seccion_activa = "podcast"
                     st.rerun()
 
-            c_m4, c_m5, c_m6 = st.columns(3)
-            with c_m4:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">🎯</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Estudio Activo / Exámenes</h3>
-                            <p style="color: #64748B; font-size: 13px;">Test, redacción pura o mixtos en PDF.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Hacer Examen", key="btn_mos_ex", use_container_width=True):
+            with c_m6:
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🎯</div><h4 style="margin:4px 0;">Exámenes</h4><p style="color:#64748B;font-size:12px;">Test, desarrollo y PDF</p></div>', unsafe_allow_html=True)
+                if st.button("Hacer Examen", key="b_ex", use_container_width=True):
                     st.session_state.seccion_activa = "examenes"
                     st.rerun()
 
-            with c_m5:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">📑</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Auditor de Trabajos</h3>
-                            <p style="color: #64748B; font-size: 13px;">Corrección con rúbrica o criterios universitarios 0-10.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Evaluar Trabajo", key="btn_mos_trab", use_container_width=True):
+            with c_m7:
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">📑</div><h4 style="margin:4px 0;">Auditor</h4><p style="color:#64748B;font-size:12px;">Corrección de trabajos</p></div>', unsafe_allow_html=True)
+                if st.button("Evaluar Ensayo", key="b_trab", use_container_width=True):
                     st.session_state.seccion_activa = "trabajos"
                     st.rerun()
 
-            with c_m6:
-                st.markdown("""
-                    <div class="mosaic-card">
-                        <div>
-                            <div style="font-size: 38px;">🤖</div>
-                            <h3 style="margin: 6px 0; color: #0F172A;">Tutor Visual Interactivo</h3>
-                            <p style="color: #64748B; font-size: 13px;">Esquemas conceptuales y descarga PDF.</p>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                if st.button("Consultar Tutor", key="btn_mos_tut", use_container_width=True):
+            with c_m8:
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🤖</div><h4 style="margin:4px 0;">Tutor Visual</h4><p style="color:#64748B;font-size:12px;">Chat con fuentes y PDF</p></div>', unsafe_allow_html=True)
+                if st.button("Consultar Tutor", key="b_tut", use_container_width=True):
                     st.session_state.seccion_activa = "tutor"
                     st.rerun()
 
         # ----------------------------------------------------------------------
-        # SECCIONES ESPECÍFICAS
+        # SECCIONES
         # ----------------------------------------------------------------------
         
         # 1. MATERIALES
         elif st.session_state.seccion_activa == "materiales":
             st.subheader("📂 Fuentes y Materiales")
-            st.caption("Guarda grabaciones de clase en MP3/M4A de hasta 2 horas o documentos PDF.")
-            
             subidos = st.file_uploader("Subir archivos:", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
             if subidos:
                 for arc in subidos:
@@ -623,15 +591,15 @@ else:
             else:
                 st.info("No hay archivos subidos todavía.")
 
-        # 2. CUADERNO DE ESTUDIO (SEGUNDO PLANO AUTÓNOMO)
+        # 2. CUADERNO DE ESTUDIO (SEGUNDO PLANO)
         elif st.session_state.seccion_activa == "apuntes":
             st.subheader("✨ Cuaderno de Estudio Inteligente")
             f_apuntes = ruta_asig / "apuntes_guardados.txt"
             estado_sync = leer_json(ruta_asig / "estado_sync.json", {})
             
             if estado_sync.get("estado") == "running":
-                st.info(f"⏳ **Chopi está procesando tus materiales en segundo plano:** {estado_sync.get('progreso')}\n\n*Puedes salirte de esta pantalla, cambiar de asignatura o hacer exámenes tranquilamente.*")
-                if st.button("🔄 Comprobar si ya ha terminado"):
+                st.info(f"⏳ **Chopi está procesando tus materiales en segundo plano:** {estado_sync.get('progreso')}\n\nPuedes navegar libremente; el servidor sigue trabajando.")
+                if st.button("🔄 Comprobar Estado"):
                     st.rerun()
             else:
                 c_btn1, c_btn2 = st.columns([2, 1])
@@ -639,7 +607,6 @@ else:
                     if st.button("🚀 Lanzar Generación de Apuntes (En Segundo Plano)"):
                         if client:
                             escribir_json(ruta_asig / "estado_sync.json", {"estado": "running", "progreso": "Iniciando proceso en el servidor..."})
-                            # Lanzar tarea al worker desacoplado del servidor
                             worker_global.submit(
                                 tarea_servidor_generar_apuntes,
                                 API_KEY, str(ruta_asig), asig_sel, nivel_estudiante, rama_bach
@@ -670,7 +637,95 @@ else:
                 if estado_sync.get("estado") != "running":
                     st.info("Pulsa el botón de arriba para generar los apuntes.")
 
-        # 3. PODCAST
+        # 3. FLASHCARDS INTERACTIVAS (ESTILO STUDYFETCH)
+        elif st.session_state.seccion_activa == "flashcards":
+            st.subheader("🗂️ Tarjetas de Memorización (Flashcards)")
+            f_flash = ruta_asig / "flashcards.json"
+            
+            if st.button("✨ Generar Nuevas Flashcards"):
+                if client:
+                    with st.spinner("Creando tarjetas de estudio..."):
+                        archivos = obtener_archivos_materia(ruta_asig)
+                        prompt_flash = f"""
+                        Genera una baraja de 10 flashcards esenciales para la asignatura: {asig_sel}.
+                        Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
+                        
+                        Devuelve EXCLUSIVAMENTE un JSON:
+                        [
+                          {{"anverso": "Concepto o pregunta clave", "reverso": "Definición o respuesta sintética"}}
+                        ]
+                        """
+                        res_fl = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_flash)
+                        raw = res_fl.text.strip()
+                        if raw.startswith("```json"): raw = raw[7:]
+                        if raw.endswith("```"): raw = raw[:-3]
+                        escribir_json(f_flash, json.loads(raw.strip()))
+                        st.session_state.card_idx = 0
+                        st.session_state.card_flipped = False
+                        st.session_state.xp += 20
+                        st.rerun()
+
+            cartas = leer_json(f_flash, [])
+            if cartas:
+                if "card_idx" not in st.session_state: st.session_state.card_idx = 0
+                if "card_flipped" not in st.session_state: st.session_state.card_flipped = False
+                
+                idx = st.session_state.card_idx % len(cartas)
+                c_act = cartas[idx]
+                
+                texto_mostrar = c_act["reverso"] if st.session_state.card_flipped else c_act["anverso"]
+                lado = "💡 Respuesta (Reverso)" if st.session_state.card_flipped else "❓ Pregunta (Anverso)"
+                
+                st.caption(f"Tarjeta {idx + 1} de {len(cartas)} — {lado}")
+                st.markdown(f'<div class="flashcard-box">{texto_mostrar}</div>', unsafe_allow_html=True)
+                
+                c_f1, c_f2, c_f3 = st.columns([1, 2, 1])
+                with c_f1:
+                    if st.button("⬅️ Anterior"):
+                        st.session_state.card_idx = (idx - 1) % len(cartas)
+                        st.session_state.card_flipped = False
+                        st.rerun()
+                with c_f2:
+                    if st.button("🔄 Voltear Tarjeta", use_container_width=True):
+                        st.session_state.card_flipped = not st.session_state.card_flipped
+                        st.rerun()
+                with c_f3:
+                    if st.button("Siguiente ➡️"):
+                        st.session_state.card_idx = (idx + 1) % len(cartas)
+                        st.session_state.card_flipped = False
+                        st.rerun()
+            else:
+                st.info("Pulsa el botón para generar las flashcards de esta materia.")
+
+        # 4. GUÍA RÁPIDA / BRIEFING DOC (ESTILO NOTEBOOKLM)
+        elif st.session_state.seccion_activa == "guia":
+            st.subheader("📋 Guía Rápida de Estudio & Conceptos Clave")
+            f_guia = ruta_asig / "guia_estudio.txt"
+            
+            if st.button("📑 Generar Hoja de Síntesis Ejecutiva"):
+                if client:
+                    with st.spinner("Redactando guía rápida..."):
+                        p_guia = f"""
+                        Genera un 'Study Guide / Briefing Doc' de 1 página para {asig_sel} (Nivel: {nivel_estudiante}):
+                        1. Resumen Ejecutivo en 3 párrafos.
+                        2. Glosario de 8 Términos Clave indispensables.
+                        3. Cronología o Hitos Básicos.
+                        4. 3 Preguntas de Reflexión.
+                        """
+                        res_g = client.models.generate_content(model='gemini-3.5-flash', contents=p_guia)
+                        with open(f_guia, "w", encoding="utf-8") as f:
+                            f.write(res_g.text)
+                        st.session_state.xp += 25
+                        st.rerun()
+                        
+            if f_guia.exists():
+                with open(f_guia, "r", encoding="utf-8") as f:
+                    txt_g = f.read()
+                pdf_g = generar_pdf_documento(f"Guía Rápida: {asig_sel}", f"Nivel: {nivel_estudiante}", txt_g)
+                st.download_button("📄 Descargar Guía en PDF", data=pdf_g, file_name=f"Guia_{asig_sel}.pdf", mime="application/pdf")
+                st.markdown(f'<div class="apunte-container">{txt_g}</div>', unsafe_allow_html=True)
+
+        # 5. PODCAST
         elif st.session_state.seccion_activa == "podcast":
             st.subheader("🎙️ Lección en Podcast Académico (MP3)")
             f_podcast_audio = ruta_asig / "podcast.mp3"
@@ -692,16 +747,13 @@ else:
                                 archivos_remotos.append(sub)
                                 
                         prompt_pod = f"""
-                        Actúa como el locutor de un podcast educativo de divulgación académica.
+                        Actúa como el locutor de un podcast educativo de alto nivel.
                         Asignatura: {asig_sel}. Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
                         Estilo: {duracion_pod}.
                         
-                        Redacta el guion hablado completo, en primera persona, sin acotaciones teatrales, con tono cercano y rigor conceptual.
+                        Redacta el guion hablado completo, en primera persona, sin acotaciones teatrales, con tono ameno pero riguroso.
                         """
-                        res_pod = client.models.generate_content(
-                            model='gemini-3.5-flash',
-                            contents=[prompt_pod] + archivos_remotos
-                        )
+                        res_pod = client.models.generate_content(model='gemini-3.5-flash', contents=[prompt_pod] + archivos_remotos)
                         guion_texto = res_pod.text
                         
                         with open(f_podcast_guion, "w", encoding="utf-8") as f:
@@ -728,7 +780,7 @@ else:
                     use_container_width=True
                 )
 
-        # 4. EXÁMENES (ESTUDIO ACTIVO)
+        # 6. EXÁMENES (ESTUDIO ACTIVO)
         elif st.session_state.seccion_activa == "examenes":
             st.subheader("🎯 Creador de Exámenes (Test, Desarrollo & PDF)")
             
@@ -741,18 +793,14 @@ else:
             
             col_cfg1, col_cfg2 = st.columns(2)
             if modalidad == "Solo Tipo Test Interactivo":
-                with col_cfg1:
-                    n_test = st.slider("Preguntas Tipo Test:", 3, 30, 10)
+                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 30, 10)
                 n_redaccion = 0
             elif modalidad == "Solo Redacción y Desarrollo Puro":
                 n_test = 0
-                with col_cfg2:
-                    n_redaccion = st.slider("Preguntas de Redacción:", 1, 8, 3)
+                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 8, 3)
             else:
-                with col_cfg1:
-                    n_test = st.slider("Preguntas Tipo Test:", 3, 20, 5)
-                with col_cfg2:
-                    n_redaccion = st.slider("Preguntas de Redacción:", 1, 5, 2)
+                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 20, 5)
+                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 5, 2)
                 
             archivos_disponibles = [f.name for f in obtener_archivos_materia(ruta_asig)]
             elegir_todos = st.checkbox("✅ Incluir todos los materiales", value=True)
@@ -876,7 +924,7 @@ else:
                         del st.session_state[f"examen_activo_{asig_sel}"]
                         st.rerun()
 
-        # 5. AUDITOR DE TRABAJOS
+        # 7. AUDITOR DE TRABAJOS
         elif st.session_state.seccion_activa == "trabajos":
             st.subheader("📑 Corrector y Evaluador de Trabajos y Ensayos")
             trabajo_texto = st.text_area("Pega tu trabajo o ensayo:", height=200)
@@ -903,17 +951,30 @@ else:
                 st.markdown("---")
                 st.markdown(st.session_state[f"evaluacion_{asig_sel}"])
 
-        # 6. TUTOR VISUAL
+        # 8. TUTOR VISUAL / CHAT CON FUENTES (ESTILO NOTEBOOKLM)
         elif st.session_state.seccion_activa == "tutor":
-            st.subheader("🤖 Tutor Visual Interactivo (Con Descarga PDF)")
-            duda = st.text_input("Formula tu consulta académica:")
+            st.subheader("🤖 Tutor Visual & Chat con Fuentes (Con Descarga PDF)")
+            duda = st.text_input("Formula tu consulta académica sobre esta asignatura:")
             
             if duda and client:
-                with st.spinner("Preparando explicación visual..."):
+                with st.spinner("Consultando tus apuntes y preparando la respuesta visual..."):
+                    # Cargar apuntes existentes como fuente si existen
+                    f_ap = ruta_asig / "apuntes_guardados.txt"
+                    apuntes_fuente = f_ap.read_text(encoding="utf-8") if f_ap.exists() else "No hay apuntes previos."
+                    
                     prompt_tutor_visual = f"""
-                    Actúa como docente experto en {asig_sel} para {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
+                    Actúa como docente titular en {asig_sel} para nivel {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
+                    
+                    Contexto de los apuntes de clase:
+                    \"\"\"{apuntes_fuente[:4000]}\"\"\"
+                    
                     Pregunta: "{duda}"
-                    INSTRUCCIONES VISUALES: 1. Gráfica y visual, 2. Esquemas o cajas de conceptos, 3. Tablas comparativas o líneas de tiempo, 4. '💡 Ideas Clave para Recordar'.
+                    
+                    INSTRUCCIONES VISUALES: 
+                    1. Responde de forma muy gráfica y clara.
+                    2. Incluye un esquema o mapa conceptual con cajas de texto (#, ##).
+                    3. Tablas comparativas o líneas temporales.
+                    4. Termina con un bloque de '💡 Ideas Clave para Recordar'.
                     """
                     res_tut = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_tutor_visual)
                     st.session_state[f"tutor_resp_{asig_sel}"] = res_tut.text
