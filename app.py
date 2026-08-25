@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 from pathlib import Path
+from google import genai
 
 st.set_page_config(
     page_title="Campus Educativo Familiar",
@@ -33,6 +34,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- CONFIGURACIÓN SEGURA DE GEMINI ---
+# Lee la clave de los Secrets de Streamlit Cloud de forma totalmente privada
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    client = genai.Client(api_key=API_KEY)
+except Exception:
+    client = None
+
 CARPETA_FAMILIAR = Path("Campus_Familiar_Datos")
 CARPETA_FAMILIAR.mkdir(exist_ok=True)
 
@@ -59,6 +68,10 @@ st.markdown(f"""
 
 st.title("🎓 Campus Educativo Familiar & Historia")
 
+# Advertencia de API si no está configurada
+if not client:
+    st.error("⚠️ Falta configurar la `GEMINI_API_KEY` en los Secrets de Streamlit Cloud.")
+
 # --- GESTIÓN DE PERFILES Y ASIGNATURAS ---
 perfiles = [d.name for d in CARPETA_FAMILIAR.iterdir() if d.is_dir()]
 
@@ -73,14 +86,13 @@ else:
     perfil_activo = st.selectbox("👤 Usuario Activo", perfiles)
     ruta_perfil = CARPETA_FAMILIAR / perfil_activo
     
-    # Menú de navegación interno
     menu = st.sidebar.radio("Navegación", ["📚 Asignaturas y Materiales", "✍️ Súper Exámenes Pro", "🤖 Tutor IA & Podcast"])
 
     if menu == "📚 Asignaturas y Materiales":
         st.subheader("Gestión de Asignaturas")
         col1, col2 = st.columns([3, 1])
         with col1:
-            nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua / Matemáticas")
+            nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua")
         with col2:
             if st.button("➕ Añadir"):
                 if nueva_asig:
@@ -90,54 +102,79 @@ else:
 
         asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
         if asignaturas:
-            asig_elegida = st.selectbox("Selecciona Asignatura para ver Materiales", asignaturas)
+            asig_elegida = st.selectbox("Selecciona Asignatura", asignaturas)
             ruta_asig = ruta_perfil / asig_elegida
             
             st.markdown("---")
             st.write(f"📂 Materiales para: **{asig_elegida}**")
             
-            # Subir PDFs o Audios
-            archivos_subidos = st.file_uploader("Sube tus apuntes (PDF o Audio MP3/M4A)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            archivos_subidos = st.file_uploader("Sube tus apuntes (PDF o Audio)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
             if archivos_subidos:
                 for archivo in archivos_subidos:
                     ruta_archivo = ruta_asig / archivo.name
                     with open(ruta_archivo, "wb") as f:
                         f.write(archivo.getbuffer())
-                st.success("¡Materiales guardados correctamente!")
+                st.success("¡Materiales guardados!")
 
-            # Listar materiales existentes
             materiales = [f.name for f in ruta_asig.iterdir() if f.is_file()]
             if materiales:
-                st.write("📄 **Archivos en esta asignatura:**")
+                st.write("📄 **Archivos disponibles:**")
                 for mat in materiales:
                     st.text(f"• {mat}")
+                
+                # --- BOTÓN DE APUNTES DINÁMICOS INTELIGENTES ---
+                if st.button("✨ Generar Apuntes Dinámicos con IA") and client:
+                    with st.spinner("Chopi está leyendo y estructurando los apuntes en esquemas visuales..."):
+                        # Construir contexto con los nombres de archivos subidos
+                        prompt_apuntes = f"Actúa como un profesor experto. Genera apuntes visuales, esquemáticos y estructurados con gráficos en texto para la asignatura {asig_elegida}, basándote en que disponemos de estos archivos: {', '.join(materiales)}."
+                        
+                        respuesta = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt_apuntes
+                        )
+                        st.markdown("### 📋 Apuntes Dinámicos Generados")
+                        st.markdown(respuesta.text)
             else:
-                st.info("No hay archivos subidos todavía.")
+                st.info("Sube algún archivo para activar los apuntes dinámicos.")
 
     elif menu == "✍️ Súper Exámenes Pro":
         st.subheader("🎯 Creador de Exámenes Maestros")
         asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
         
         if not asignaturas:
-            st.warning("Primero crea alguna asignatura y sube apuntes.")
+            st.warning("Primero crea alguna asignatura.")
         else:
-            asig_examen = st.multiselect("Selecciona Asignatura(s) para el Examen", asignaturas)
-            
-            tipo_examen = st.selectbox("Modalidad de Examen", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
-            
+            asig_examen = st.multiselect("Selecciona Asignatura(s)", asignaturas)
+            tipo_examen = st.selectbox("Modalidad", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
             num_preguntas = st.slider("Número de preguntas (Tipo Test)", 10, 100, 20)
             
             penaliza = False
             if "Test" in tipo_examen or "Mixto" in tipo_examen:
                 penaliza = st.checkbox("¿Las respuestas incorrectas restan 0,25 puntos?")
 
-            if st.button("🚀 Generar Examen Pro"):
+            if st.button("🚀 Generar Examen Pro") and client:
                 if not asig_examen:
                     st.error("Selecciona al menos una asignatura.")
                 else:
-                    st.success(f"¡Examen generado con éxito! (Modalidad: {tipo_examen}, Preguntas: {num_preguntas}, Penalización: {'Sí (-0.25)' if penaliza else 'No'})")
-                    # Aquí conectaremos el motor de IA en el siguiente bloque
+                    with st.spinner("Diseñando examen riguroso..."):
+                        prompt_examen = f"Crea un examen de nivel universitario de historia (o adaptado si es primaria/ESO según currículo de Castilla y León) para la(s) asignatura(s) {', '.join(asig_examen)}. Modalidad: {tipo_examen}. Número de preguntas tipo test: {num_preguntas}. Penalización por fallo: {'Sí (-0.25)' if penaliza else 'No'}."
+                        
+                        res_examen = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt_examen
+                        )
+                        st.markdown("### 📝 Tu Examen Personalizado")
+                        st.markdown(res_examen.text)
 
     elif menu == "🤖 Tutor IA & Podcast":
-        st.subheader("🤖 Tutor de Historia / Académico & Podcast")
-        st.info("Próximamente: Chat tutor adaptado al nivel (Universidad / Primaria / CyL) y generación de audios explicativos.")
+        st.subheader("🤖 Tutor de Historia & Explicaciones")
+        st.info("Escribe tus dudas abajo y el tutor académico te responderá adaptado a tu nivel.")
+        
+        pregunta_usuario = st.text_input("¿Qué duda tienes sobre los temas?")
+        if pregunta_usuario and client:
+            with st.spinner("El tutor está redactando la explicación..."):
+                resp_tutor = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=f"Actúa como tutor académico universitario de Historia (o profesor de apoyo según nivel). Responde de forma didáctica, visual y rigurosa a: {pregunta_usuario}"
+                )
+                st.markdown(resp_tutor.text)
