@@ -3,3 +3,5 @@ google-genai
 PyPDF2
 fpdf
 gtts
+streamlit
+google-generativeai
