@@ -2,7 +2,6 @@ import streamlit as st
 import os
 from pathlib import Path
 
-# Configuración de la página optimizada para iPad
 st.set_page_config(
     page_title="Campus Educativo Familiar",
     page_icon="🐾",
@@ -10,7 +9,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados para un diseño limpio y moderno
 st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
@@ -18,7 +16,7 @@ st.markdown("""
         background-color: #FFF3E0;
         border: 1px solid #FFE0B2;
         padding: 15px;
-        border-radius: 10px;
+        border_radius: 10px;
         margin-bottom: 20px;
     }
     .stButton>button {
@@ -35,27 +33,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Directorio de datos local en la nube del proyecto
 CARPETA_FAMILIAR = Path("Campus_Familiar_Datos")
 CARPETA_FAMILIAR.mkdir(exist_ok=True)
 
-# --- INICIALIZAR ESTADOS ---
 if "xp" not in st.session_state:
-    st.session_state.xp = 150  # XP inicial para Chopi
+    st.session_state.xp = 150
 
 # --- MASCOTA CHOPI ---
 def obtener_estado_chopi(xp):
     nivel = (xp // 100) + 1
     if xp < 200:
-        return f"🐶 Chopi (Nivel {nivel}) - ¡Motivado y listo para estudiar contigo desde el iPad!", "🟢 Alegre"
+        return f"🐶 Chopi (Nivel {nivel}) - ¡Listos para estudiar en el iPad!", "🟢 Alegre"
     elif xp < 500:
-        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable! ¡Menudos notazos estamos sacando!", "🔥 Estelar"
+        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable con los exámenes!", "🔥 Estelar"
     else:
         return f"👑 Chopi (Nivel {nivel}) - ¡Catedrático Canino Supremo!", "💎 Legendario"
 
 texto_chopi, _ = obtener_estado_chopi(st.session_state.xp)
-
-# Renderizar tarjeta de Chopi
 st.markdown(f"""
     <div class="chopi-card">
         <h4 style="margin: 0; color: #1E293B;">🐾 Chopi - Tu Compañero de Estudio</h4>
@@ -65,50 +59,85 @@ st.markdown(f"""
 
 st.title("🎓 Campus Educativo Familiar & Historia")
 
-# --- GESTIÓN DE PERFILES ---
+# --- GESTIÓN DE PERFILES Y ASIGNATURAS ---
 perfiles = [d.name for d in CARPETA_FAMILIAR.iterdir() if d.is_dir()]
 
 if not perfiles:
-    st.info("No hay perfiles creados todavía. Crea el primero para empezar:")
-    nuevo_perfil = st.text_input("Nombre del Estudiante / Perfil (ej. Historial_Papa)")
+    st.info("Crea tu primer perfil de estudiante:")
+    nuevo_perfil = st.text_input("Nombre del Estudiante")
     if st.button("Crear Perfil"):
         if nuevo_perfil:
             (CARPETA_FAMILIAR / nuevo_perfil).mkdir(exist_ok=True)
             st.rerun()
 else:
-    perfil_activo = st.selectbox("👤 Selecciona el Usuario Activo", perfiles)
-    
+    perfil_activo = st.selectbox("👤 Usuario Activo", perfiles)
     ruta_perfil = CARPETA_FAMILIAR / perfil_activo
-    asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
+    
+    # Menú de navegación interno
+    menu = st.sidebar.radio("Navegación", ["📚 Asignaturas y Materiales", "✍️ Súper Exámenes Pro", "🤖 Tutor IA & Podcast"])
 
-    st.markdown("---")
-    st.subheader("📚 Gestión de Asignaturas")
+    if menu == "📚 Asignaturas y Materiales":
+        st.subheader("Gestión de Asignaturas")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua / Matemáticas")
+        with col2:
+            if st.button("➕ Añadir"):
+                if nueva_asig:
+                    (ruta_perfil / nueva_asig).mkdir(exist_ok=True)
+                    st.success("Asignatura creada")
+                    st.rerun()
 
-    # Crear nueva asignatura
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua / Matemáticas ESO")
-    with col2:
-        if st.button("➕ Añadir"):
-            if nueva_asig:
-                (ruta_perfil / nueva_asig).mkdir(exist_ok=True)
-                st.success(f"Asignatura creada")
-                st.rerun()
+        asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
+        if asignaturas:
+            asig_elegida = st.selectbox("Selecciona Asignatura para ver Materiales", asignaturas)
+            ruta_asig = ruta_perfil / asig_elegida
+            
+            st.markdown("---")
+            st.write(f"📂 Materiales para: **{asig_elegida}**")
+            
+            # Subir PDFs o Audios
+            archivos_subidos = st.file_uploader("Sube tus apuntes (PDF o Audio MP3/M4A)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            if archivos_subidos:
+                for archivo in archivos_subidos:
+                    ruta_archivo = ruta_asig / archivo.name
+                    with open(ruta_archivo, "wb") as f:
+                        f.write(archivo.getbuffer())
+                st.success("¡Materiales guardados correctamente!")
 
-    # Listar asignaturas
-    if not asignaturas:
-        st.write("*(Aún no hay asignaturas en este perfil. Añade una arriba)*")
-    else:
-        for asig in asignaturas:
-            with st.container():
-                st.markdown(f"""
-                    <div style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-weight: bold; color: #1E293B; font-size: 16px;">📚 {asig}</span>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Botón de acceso a la asignatura (preparado para el siguiente bloque)
-                if st.button(f"Entrar en {asig}", key=f"btn_{asig}"):
-                    st.session_state.asig_activa = asig
-                    st.toast(f"Has entrado en {asig}")
+            # Listar materiales existentes
+            materiales = [f.name for f in ruta_asig.iterdir() if f.is_file()]
+            if materiales:
+                st.write("📄 **Archivos en esta asignatura:**")
+                for mat in materiales:
+                    st.text(f"• {mat}")
+            else:
+                st.info("No hay archivos subidos todavía.")
 
+    elif menu == "✍️ Súper Exámenes Pro":
+        st.subheader("🎯 Creador de Exámenes Maestros")
+        asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
+        
+        if not asignaturas:
+            st.warning("Primero crea alguna asignatura y sube apuntes.")
+        else:
+            asig_examen = st.multiselect("Selecciona Asignatura(s) para el Examen", asignaturas)
+            
+            tipo_examen = st.selectbox("Modalidad de Examen", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
+            
+            num_preguntas = st.slider("Número de preguntas (Tipo Test)", 10, 100, 20)
+            
+            penaliza = False
+            if "Test" in tipo_examen or "Mixto" in tipo_examen:
+                penaliza = st.checkbox("¿Las respuestas incorrectas restan 0,25 puntos?")
+
+            if st.button("🚀 Generar Examen Pro"):
+                if not asig_examen:
+                    st.error("Selecciona al menos una asignatura.")
+                else:
+                    st.success(f"¡Examen generado con éxito! (Modalidad: {tipo_examen}, Preguntas: {num_preguntas}, Penalización: {'Sí (-0.25)' if penaliza else 'No'})")
+                    # Aquí conectaremos el motor de IA en el siguiente bloque
+
+    elif menu == "🤖 Tutor IA & Podcast":
+        st.subheader("🤖 Tutor de Historia / Académico & Podcast")
+        st.info("Próximamente: Chat tutor adaptado al nivel (Universidad / Primaria / CyL) y generación de audios explicativos.")
