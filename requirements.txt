@@ -7,3 +7,5 @@ streamlit
 google-generativeai
 google-genai
 reportlab
+gTTS
+
