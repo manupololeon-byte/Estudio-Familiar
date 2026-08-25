@@ -10,24 +10,34 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS muy visuales y modernos (tarjetas, colores e iconos)
+# Estilos CSS de alta gama: tarjetas flotantes, colores suaves y diseño amable
 st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
     .chopi-card {
-        background-color: #FFF3E0;
-        border: 1px solid #FFE0B2;
-        padding: 15px;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+        border: 1px solid #FFCC80;
+        padding: 18px;
+        border-radius: 14px;
         margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.03);
+    }
+    .card-asignatura {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        margin-bottom: 15px;
     }
     .apunte-box {
         background-color: white;
-        border-left: 5px solid #E35205;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 6px solid #E35205;
+        padding: 22px;
+        border-radius: 10px;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.04);
         margin-top: 15px;
+        margin-bottom: 15px;
     }
     .stButton>button {
         background-color: #E35205;
@@ -35,6 +45,7 @@ st.markdown("""
         border-radius: 8px;
         border: none;
         font-weight: bold;
+        padding: 8px 16px;
     }
     .stButton>button:hover {
         background-color: #C2410C;
@@ -54,22 +65,28 @@ CARPETA_FAMILIAR.mkdir(exist_ok=True)
 
 if "xp" not in st.session_state:
     st.session_state.xp = 150
+if "asig_actual" not in st.session_state:
+    st.session_state.asig_actual = None
 
-# --- MASCOTA CHOPI ---
+# --- MASCOTA CHOPI Y RECOMPENSAS ---
 def obtener_estado_chopi(xp):
     nivel = (xp // 100) + 1
-    if xp < 200:
-        return f"🐶 Chopi (Nivel {nivel}) - ¡Estudiando con apuntes visuales!", "🟢 Alegre"
-    elif xp < 500:
-        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable con los exámenes!", "🔥 Estelar"
+    if xp < 250:
+        return f"🐶 Chopi (Nivel {nivel}) - ¡Qué ganas de hincar los codos en el iPad!", "🟢 Alegre", "#E35205"
+    elif xp < 600:
+        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable! ¡Estás bordando los exámenes!", "🔥 Estelar", "#D97706"
     else:
-        return f"👑 Chopi (Nivel {nivel}) - ¡Catedrático Canino Supremo!", "💎 Legendario"
+        return f"👑 Chopi (Nivel {nivel}) - ¡Catedrático Canino Supremo! ¡Nivel Dios!", "💎 Legendario", "#7C3AED"
 
-texto_chopi, _ = obtener_estado_chopi(st.session_state.xp)
+texto_chopi, estado_txt, color_chopi = obtener_estado_chopi(st.session_state.xp)
+
 st.markdown(f"""
     <div class="chopi-card">
-        <h4 style="margin: 0; color: #1E293B;">🐾 Chopi - Tu Compañero de Estudio</h4>
-        <p style="margin: 5px 0 0 0; color: #64748B; font-size: 14px;">{texto_chopi}</p>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0; color: #1E293B;">🐾 Chopi - Tu Compañero de Estudio</h4>
+            <span style="background: {color_chopi}; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;">{estado_txt} (XP: {st.session_state.xp})</span>
+        </div>
+        <p style="margin: 8px 0 0 0; color: #475569; font-size: 14px;">{texto_chopi}</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -90,131 +107,178 @@ if not perfiles:
 else:
     perfil_activo = st.selectbox("👤 Usuario Activo", perfiles)
     ruta_perfil = CARPETA_FAMILIAR / perfil_activo
-    
-    menu = st.sidebar.radio("Navegación", ["📚 Asignaturas y Materiales", "✍️ Súper Exámenes Pro", "🤖 Tutor IA & Podcast"])
 
-    if menu == "📚 Asignaturas y Materiales":
-        st.subheader("Gestión de Asignaturas y Apuntes Dinámicos")
+    # --- CONTROL DE NAVEGACIÓN: SI ESTAMOS DENTRO DE UNA ASIGNATURA O EN EL GENERAL ---
+    if st.session_state.asig_actual is None:
+        # PANTALLA PRINCIPAL DE ASIGNATURAS
+        st.subheader("📚 Mis Asignaturas")
+        
         col1, col2 = st.columns([3, 1])
         with col1:
-            nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua")
+            nueva_asig = st.text_input("Nombre de Asignatura", label_visibility="collapsed", placeholder="Ej. Historia de España / Geografía")
         with col2:
-            if st.button("➕ Añadir"):
+            if st.button("➕ Crear Asignatura"):
                 if nueva_asig:
                     (ruta_perfil / nueva_asig).mkdir(exist_ok=True)
-                    st.success("Asignatura creada")
+                    st.success("¡Asignatura creada!")
                     st.rerun()
 
         asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
-        if asignaturas:
-            asig_elegida = st.selectbox("Selecciona Asignatura", asignaturas)
-            ruta_asig = ruta_perfil / asig_elegida
-            
+        
+        if not asignaturas:
+            st.info("No hay asignaturas creadas todavía. Añade una arriba para empezar.")
+        else:
             st.markdown("---")
-            st.write(f"📂 Materiales para: **{asig_elegida}**")
+            for asig in asignaturas:
+                st.markdown(f"""
+                    <div class="card-asignatura">
+                        <h3 style="margin: 0 0 10px 0; color: #1E293B;">📚 {asig}</h3>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                col_btn1, col_btn2 = st.columns([2, 2])
+                with col_btn1:
+                    if st.button(f"📂 Entrar a la Asignatura", key=f"entrar_{asig}"):
+                        st.session_state.asig_actual = asig
+                        st.rerun()
+                with col_btn2:
+                    if st.button(f"🗑️ Borrar Asignatura", key=f"borrar_asig_{asig}"):
+                        import shutil
+                        shutil.rmtree(ruta_perfil / asig)
+                        st.rerun()
+
+    else:
+        # --- PÁGINA ESPECÍFICA DE LA ASIGNATURA (SECCIONES Y PESTAÑAS) ---
+        asig_elegida = st.session_state.asig_actual
+        ruta_asig = ruta_perfil / asig_elegida
+
+        if st.button("⬅️ Volver al listado general de asignaturas"):
+            st.session_state.asig_actual = None
+            st.rerun()
+
+        st.markdown(f"## 📚 Asignatura: {asig_elegida}")
+        
+        # Pestañas internas de la asignatura
+        tab_materiales, tab_apuntes, tab_examenes, tab_tutor = st.tabs(["📂 Materiales y Carpetas", "✨ Apuntes Dinámicos", "🎯 Súper Exámenes Pro", "🤖 Tutor IA"])
+
+        with tab_materiales:
+            st.subheader("Gestión de Materiales y Apartados")
             
-            # Subir archivos con actualización automática al terminar
-            archivos_subidos = st.file_uploader("Sube tus apuntes (PDF o Audio)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            # Crear subcarpetas (temas/apartados)
+            sub_carpeta = st.text_input("Crear apartado o carpeta (ej. Tema 1 - Prehistoria)")
+            if st.button("➕ Crear Carpeta"):
+                if sub_carpeta:
+                    (ruta_asig / sub_carpeta).mkdir(exist_ok=True)
+                    st.success("Carpeta creada")
+                    st.rerun()
+
+            carpetas = [d.name for d in ruta_asig.iterdir() if d.is_dir()]
+            carpeta_elegida = st.selectbox("Selecciona carpeta / apartado", ["Raíz (General)"] + carpetas)
             
-            # Detectar si se han subido archivos nuevos
-            cambio_detectado = False
+            ruta_destino = ruta_asig if carpeta_elegida == "Raíz (General)" else ruta_asig / carpeta_elegida
+
+            # Subida de ficheros (PDFs y Audios)
+            archivos_subidos = st.file_uploader(f"Sube archivos a [{carpeta_elegida}] (PDF, MP3, M4A)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
             if archivos_subidos:
                 for archivo in archivos_subidos:
-                    ruta_archivo = ruta_asig / archivo.name
-                    if not ruta_archivo.exists():
-                        with open(ruta_archivo, "wb") as f:
-                            f.write(archivo.getbuffer())
-                        cambio_detectado = True
+                    with open(ruta_destino / archivo.name, "wb") as f:
+                        f.write(archivo.getbuffer())
+                st.success("¡Archivos subidos con éxito!")
+                st.rerun()
 
-            materiales = sorted([f.name for f in ruta_asig.iterdir() if f.is_file()])
-            
-            # Control de cambios en archivos (añadidos o borrados)
-            clave_cache_archivos = f"cache_{asig_elegida}"
-            if clave_cache_archivos not in st.session_state:
-                st.session_state[clave_cache_archivos] = []
-
-            if materiales != st.session_state[clave_cache_archivos] or cambio_detectado:
-                st.session_state[clave_cache_archivos] = materiales
-                cambio_detectado = True
-
-            if materiales:
-                st.write("📄 **Archivos activos:**")
-                cols_archivos = st.columns(len(materiales))
-                for i, mat in enumerate(materiales):
-                    with cols_archivos[i % len(cols_archivos)]:
-                        st.caption(f"• {mat}")
-                        if st.button(f"🗑️ Borrar {mat[:10]}...", key=f"del_{mat}"):
-                            (ruta_asig / mat).unlink(missing_ok=True)
+            st.markdown("### 📄 Archivos en este apartado:")
+            ficheros_actuales = [f.name for f in ruta_destino.iterdir() if f.is_file()]
+            if ficheros_actuales:
+                for f in ficheros_actuales:
+                    col_f1, col_f2 = st.columns([4, 1])
+                    with col_f1:
+                        st.text(f"• {f}")
+                    with col_f2:
+                        if st.button("🗑️", key=f"del_f_{f}"):
+                            (ruta_destino / f).unlink()
                             st.rerun()
+            else:
+                st.info("No hay archivos en este apartado.")
 
-                # --- APUNTES DINÁMICOS AUTOMÁTICOS Y VISUALES ---
-                st.markdown("---")
-                st.subheader("✨ Apuntes Dinámicos y Visuales (Actualización Automática)")
-                
-                if client:
-                    with st.spinner("🔄 Chopi está procesando los cambios y rediseñando los apuntes visuales..."):
+        with tab_apuntes:
+            st.subheader("Apuntes Dinámicos, Visuales y Descargables")
+            
+            todos_los_archivos = [f.name for f in ruta_asig.glob("**/*") if f.is_file()]
+            
+            if todos_los_archivos:
+                if client and st.button("✨ Actualizar Apuntes Visuales Automáticamente"):
+                    with st.spinner("Chopi está redactando los apuntes académicos..."):
                         prompt_apuntes = f"""
-                        Actúa como un profesor catedrático de Historia y experto en diseño pedagógico. 
-                        Genera unos apuntes sumamente **visuales, atractivos y estructurados** para la asignatura {asig_elegida}, basándote estrictamente en los materiales disponibles: {', '.join(materiales)}.
-                        
-                        Usa obligatoriamente:
-                        1. **Estructura en Tarjetas y Bloques Markdown** (con negritas, iconos y viñetas cuidadas).
-                        2. **Tablas comparativas** si el tema lo requiere.
-                        3. **Esquemas conceptuales visuales** utilizando cajas de texto o flujos claros en texto enriquecido.
-                        4. Explicaciones rigurosas de nivel académico.
+                        Actúa como un catedrático de Historia. Genera apuntes académicos altamente **visuales, estructurados y atractivos** para la asignatura {asig_elegida}, basándote en los archivos: {', '.join(todos_los_archivos)}.
+                        Utiliza tablas, esquemas conceptuales en texto y tarjetas destacadas.
                         """
-                        
-                        respuesta = client.models.generate_content(
+                        res_apuntes = client.models.generate_content(
                             model='gemini-3.5-flash',
                             contents=prompt_apuntes
                         )
-                        
-                        st.markdown(f"""
-                            <div class="apunte-box">
-                                {respuesta.text}
-                            </div>
-                        """, unsafe_allow_html=True)
-            else:
-                st.info("Sube tu primer archivo (PDF o audio) y los apuntes visuales se generarán automáticamente aquí al instante.")
+                        st.session_state[f"apuntes_{asig_elegida}"] = res_apuntes.text
 
-    elif menu == "✍️ Súper Exámenes Pro":
-        st.subheader("🎯 Creador de Exámenes Maestros")
-        asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
-        
-        if not asignaturas:
-            st.warning("Primero crea alguna asignatura.")
-        else:
-            asig_examen = st.multiselect("Selecciona Asignatura(s)", asignaturas)
-            tipo_examen = st.selectbox("Modalidad", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
+            if f"apuntes_{asig_elegida}" in st.session_state:
+                st.markdown(f"""
+                    <div class="apunte-box">
+                        {st.session_state[f"apuntes_{asig_elegida}"]}
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # Opción de Exportar a PDF (simulado limpio mediante texto descargable)
+                st.download_button(
+                    label="📥 Exportar Apuntes a PDF / TXT",
+                    data=st.session_state[f"apuntes_{asig_elegida}"],
+                    file_name=f"Apuntes_{asig_elegida}.txt",
+                    mime="text/plain"
+                )
+            else:
+                st.info("Sube archivos en la pestaña anterior para generar los apuntes dinámicos.")
+
+        with tab_examenes:
+            st.subheader("🎯 Creador de Exámenes Maestros & Calibración 0-10")
+            
+            tipo_examen = st.selectbox("Modalidad de Examen", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
             num_preguntas = st.slider("Número de preguntas (Tipo Test)", 10, 100, 20)
             
             penaliza = False
             if "Test" in tipo_examen or "Mixto" in tipo_examen:
                 penaliza = st.checkbox("¿Las respuestas incorrectas restan 0,25 puntos?")
 
-            if st.button("🚀 Generar Examen Pro") and client:
-                if not asig_examen:
-                    st.error("Selecciona al menos una asignatura.")
-                else:
-                    with st.spinner("Diseñando examen riguroso..."):
-                        prompt_examen = f"Crea un examen de nivel universitario de historia (o adaptado si es primaria/ESO según currículo de Castilla y León) para la(s) asignatura(s) {', '.join(asig_examen)}. Modalidad: {tipo_examen}. Número de preguntas tipo test: {num_preguntas}. Penalización por fallo: {'Sí (-0.25)' if penaliza else 'No'}."
-                        
-                        res_examen = client.models.generate_content(
-                            model='gemini-3.5-flash',
-                            contents=prompt_examen
-                        )
-                        st.markdown("### 📝 Tu Examen Personalizado")
-                        st.markdown(res_examen.text)
+            if st.button("🚀 Lanzar Examen Pro") and client:
+                with st.spinner("Chopi está redactando el examen con rigor universitario / curricular..."):
+                    prompt_ex = f"""
+                    Crea un examen formal de nivel académico para la asignatura {asig_elegida}.
+                    Modalidad: {tipo_examen}. Número de preguntas tipo test: {num_preguntas}. 
+                    Penalización por fallo: {'Sí (-0.25)' if penaliza else 'No'}.
+                    Incluye sus respectivas respuestas o criterios de corrección al final.
+                    """
+                    res_ex = client.models.generate_content(
+                        model='gemini-3.5-flash',
+                        contents=prompt_ex
+                    )
+                    st.session_state[f"examen_{asig_elegida}"] = res_ex.text
+                    # Recompensa Chopi por generar examen
+                    st.session_state.xp += 25
 
-    elif menu == "🤖 Tutor IA & Podcast":
-        st.subheader("🤖 Tutor de Historia & Explicaciones")
-        st.info("Escribe tus dudas abajo y el tutor académico te responderá adaptado a tu nivel.")
-        
-        pregunta_usuario = st.text_input("¿Qué duda tienes sobre los temas?")
-        if pregunta_usuario and client:
-            with st.spinner("El tutor está redactando la explicación..."):
-                resp_tutor = client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=f"Actúa como tutor académico universitario de Historia (o profesor de apoyo según nivel). Responde de forma didáctica, visual y rigurosa a: {pregunta_usuario}"
-                )
-                st.markdown(resp_tutor.text)
+            if f"examen_{asig_elegida}" in st.session_state:
+                st.markdown("---")
+                st.markdown(st.session_state[f"examen_{asig_elegida}"])
+                
+                st.markdown("### 🏆 Calificación del Examen")
+                nota_simulada = st.slider("Asigna tu nota ponderada final (0 a 10)", 0.0, 10.0, 5.0, 0.25)
+                if st.button("💾 Guardar Nota y Recompensar a Chopi"):
+                    st.session_state.xp += 50
+                    st.success(f"¡Nota guardada: {nota_simulada} / 10! Chopi ha ganado +50 XP por tu esfuerzo.")
+                    st.rerun()
+
+        with tab_tutor:
+            st.subheader("🤖 Tutor Académico Personalizado")
+            pregunta = st.text_input("Hazle cualquier consulta al tutor de Historia sobre esta asignatura:")
+            if pregunta and client:
+                with st.spinner("El tutor está respondiendo..."):
+                    resp_tutor = client.models.generate_content(
+                        model='gemini-3.5-flash',
+                        contents=f"Como tutor académico experto en {asig_elegida}, responde de forma rigurosa y visual a: {pregunta}"
+                    )
+                    st.markdown(resp_tutor.text)
