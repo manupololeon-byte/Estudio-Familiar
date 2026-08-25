@@ -16,7 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 from reportlab.lib.units import cm
 
-# --- CONFIGURACIÓN DE PÁGINA (OPTIMIZADA IPAD / MAC / WINDOWS) ---
+# --- CONFIGURACIÓN DE PÁGINA (IPAD / MAC / WINDOWS) ---
 st.set_page_config(
     page_title="Campus Educativo Familiar & VIU",
     page_icon="🐕‍🦺",
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ESTILOS VISUALES MODERNOS Y LIMPIOS ---
+# --- ESTILOS CSS REFINADOS ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -108,7 +108,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CLIENTE GEMINI Y WORKER ASÍNCRONO ---
+# --- CLIENTE GEMINI Y SERVIDOR WORKER ASÍNCRONO ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=API_KEY)
@@ -132,9 +132,9 @@ if "asig_actual" not in st.session_state:
 if "seccion_activa" not in st.session_state:
     st.session_state.seccion_activa = "mosaico"
 if "xp" not in st.session_state:
-    st.session_state.xp = 270
+    st.session_state.xp = 280
 
-# --- PERSISTENCIA JSON ---
+# --- FUNCIONES JSON Y DISCO ---
 def leer_json(ruta_f, default):
     if ruta_f.exists():
         try:
@@ -189,12 +189,12 @@ def generar_pdf_documento(titulo_doc, subtitulo_doc, contenido_markdown):
     buffer.seek(0)
     return buffer.getvalue()
 
-# --- TAREA EN SEGUNDO PLANO A NIVEL DE SERVIDOR ---
+# --- TAREAS ASÍNCRONAS EN SEGUNDO PLANO A NIVEL DE SERVIDOR ---
 def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_edu, rama_bach):
     ruta_asig = Path(ruta_asig_str)
     f_estado = ruta_asig / "estado_sync.json"
     try:
-        escribir_json(f_estado, {"estado": "running", "progreso": "Subiendo e indexando archivos/audios a Gemini..."})
+        escribir_json(f_estado, {"estado": "running", "progreso": "Subiendo e indexando audios y PDFs a Gemini..."})
         cliente_fondo = genai.Client(api_key=api_key)
         
         archivos = obtener_archivos_materia(ruta_asig)
@@ -203,6 +203,7 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
         for r in archivos:
             if r.suffix.lower() in [".mp3", ".m4a", ".wav", ".pdf"]:
                 sub = cliente_fondo.files.upload(file=str(r))
+                # Espera activa si es un archivo de audio pesado
                 while sub.state and sub.state.name == "PROCESSING":
                     time.sleep(3)
                     sub = cliente_fondo.files.get(name=sub.name)
@@ -215,7 +216,7 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
         elif "Castilla y León" in nivel_edu:
             ctx = f"ESTUDIANTE ESCOLAR ({nivel_edu}) - Currículo Oficial de Castilla y León (BOCYL / LOMLOE)."
         else:
-            ctx = "ESTUDIANTE UNIVERSITARIO (VIU - Grado en Historia). Rigor analítico e historiográfico. Sintetiza minuciosamente los audios y documentos."
+            ctx = "ESTUDIANTE UNIVERSITARIO (VIU - Grado en Historia). Rigor analítico y conceptual. Sintetiza minuciosamente los audios y documentos adjuntos."
 
         prompt = f"""
         {ctx}
@@ -236,6 +237,45 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
     except Exception as e:
         escribir_json(f_estado, {"estado": "error", "progreso": f"Error: {str(e)}"})
 
+def tarea_servidor_generar_podcast(api_key, ruta_asig_str, asig_nombre, nivel_edu, rama_bach, duracion_pod):
+    ruta_asig = Path(ruta_asig_str)
+    f_estado = ruta_asig / "estado_podcast.json"
+    try:
+        escribir_json(f_estado, {"estado": "running", "progreso": "Indexando materiales para el podcast..."})
+        cliente_fondo = genai.Client(api_key=api_key)
+        
+        archivos = obtener_archivos_materia(ruta_asig)
+        archivos_remotos = []
+        for r in archivos:
+            if r.suffix.lower() in [".mp3", ".m4a", ".wav", ".pdf"]:
+                sub = cliente_fondo.files.upload(file=str(r))
+                while sub.state and sub.state.name == "PROCESSING":
+                    time.sleep(3)
+                    sub = cliente_fondo.files.get(name=sub.name)
+                archivos_remotos.append(sub)
+
+        escribir_json(f_estado, {"estado": "running", "progreso": "Redactando guion pedagógico..."})
+        prompt_pod = f"""
+        Actúa como el locutor de un podcast educativo de alto nivel.
+        Asignatura: {asig_nombre}. Nivel: {nivel_edu} {f'({rama_bach})' if 'Bachillerato' in nivel_edu else ''}.
+        Estilo: {duracion_pod}.
+        
+        Redacta el guion hablado completo, en primera persona, sin acotaciones teatrales, con tono cercano y rigor conceptual.
+        """
+        res_pod = cliente_fondo.models.generate_content(model='gemini-3.5-flash', contents=[prompt_pod] + archivos_remotos)
+        guion_texto = res_pod.text
+        
+        with open(ruta_asig / "guion_podcast.txt", "w", encoding="utf-8") as f:
+            f.write(guion_texto)
+            
+        escribir_json(f_estado, {"estado": "running", "progreso": "Grabando audio MP3..."})
+        tts = gTTS(text=guion_texto, lang='es', tld='es')
+        tts.save(str(ruta_asig / "podcast.mp3"))
+        
+        escribir_json(f_estado, {"estado": "done", "progreso": "Podcast listo"})
+    except Exception as e:
+        escribir_json(f_estado, {"estado": "error", "progreso": f"Error: {str(e)}"})
+
 def obtener_icono_asig(nombre):
     n = nombre.lower()
     if any(k in n for k in ["geo", "tierra"]): return "🌍"
@@ -247,7 +287,6 @@ def obtener_icono_asig(nombre):
     if any(k in n for k in ["ingles", "frances"]): return "🗣️"
     return "📚"
 
-# --- CABECERA GLOBAL CON CHOPI ---
 def render_chopi_header():
     nivel_chopi = (st.session_state.xp // 100) + 1
     
@@ -255,14 +294,17 @@ def render_chopi_header():
     for p in CARPETA_DATOS.glob("*/*"):
         if p.is_dir():
             st_info = leer_json(p / "estado_sync.json", {})
+            st_pod = leer_json(p / "estado_podcast.json", {})
             if st_info.get("estado") == "running":
-                tareas_activas.append(f"{p.name}")
+                tareas_activas.append(f"Apuntes de {p.name}")
+            if st_pod.get("estado") == "running":
+                tareas_activas.append(f"Podcast de {p.name}")
 
     col_c1, col_c2 = st.columns([5, 1])
     with col_c1:
         aviso_fondo = ""
         if tareas_activas:
-            aviso_fondo = f"<br><span style='color: #FCD34D; font-size: 12px;'>⏳ Procesando en fondo: {', '.join(tareas_activas)}</span>"
+            aviso_fondo = f"<br><span style='color: #FCD34D; font-size: 12px;'>⏳ Procesando en fondo del servidor: {', '.join(tareas_activas)}</span>"
             
         st.markdown(f"""
             <div class="chopi-header">
@@ -270,7 +312,7 @@ def render_chopi_header():
                 <div>
                     <h3 style="margin:0; color: #F8FAFC;">Chopi - Tu Compañero Patterdale Terrier</h3>
                     <p style="margin:2px 0 0 0; color: #94A3B8; font-size: 13px;">
-                        Nivel <b>{nivel_chopi}</b> • XP: <b>{st.session_state.xp}</b> | Campus de Estudio Inteligente.{aviso_fondo}
+                        Nivel <b>{nivel_chopi}</b> • XP: <b>{st.session_state.xp}</b> | Procesamiento autónomo en segundo plano.{aviso_fondo}
                     </p>
                 </div>
             </div>
@@ -283,7 +325,7 @@ def render_chopi_header():
             st.rerun()
 
 # ==============================================================================
-# 1. PANTALLA PRINCIPAL (SELECCIÓN Y GESTIÓN DE USUARIOS)
+# 1. PANTALLA PRINCIPAL
 # ==============================================================================
 if st.session_state.usuario_activo is None:
     render_chopi_header()
@@ -318,8 +360,8 @@ if st.session_state.usuario_activo is None:
         st.markdown("""
         1. **Selecciona tu Perfil** abajo.
         2. **Entra a una Asignatura** y navega por el panel de herramientas.
-        3. En **✨ Cuaderno de Estudio**, pulsa en generar apuntes en segundo plano.
-        4. Practica con las **🗂️ Flashcards**, haz simulacros en **🎯 Exámenes** o escucha el **🎙️ Podcast**.
+        3. En **📂 Materiales**, sube tus archivos y espera a verlos en la lista de guardados.
+        4. En **✨ Cuaderno**, pulsa generar en segundo plano: ¡puedes salirte o cambiar de pantalla sin que se cancele!
         """)
         
     with tab_admin:
@@ -446,7 +488,6 @@ else:
                 if st_sync.get("estado") == "running":
                     aviso_sync = "<div style='color: #EA580C; font-size: 11px; font-weight: bold; margin-top: 4px;'>⚙️ Procesando en fondo...</div>"
                 
-                # HTML completamente limpio sin saltos problemáticos
                 card_html = (
                     f'<div class="mosaic-card">'
                     f'<div style="font-size: 38px;">{ic}</div>'
@@ -470,7 +511,7 @@ else:
                         st.rerun()
 
     # --------------------------------------------------------------------------
-    # 2.2 DENTRO DE LA ASIGNATURA (STUDIO GRID COMPLETO)
+    # 2.2 DENTRO DE LA ASIGNATURA
     # --------------------------------------------------------------------------
     else:
         asig_sel = st.session_state.asig_actual
@@ -507,9 +548,7 @@ else:
             if delta >= 0:
                 st.info(f"⏳ **Cuenta atrás:** Faltan **{delta} días** para el examen ({f_ex.strftime('%d/%m/%Y')}).")
 
-        # ----------------------------------------------------------------------
-        # MOSAICO INTERACTIVO NOTEBOOK / STUDYFETCH
-        # ----------------------------------------------------------------------
+        # MOSAICO INTERACTIVO
         if st.session_state.seccion_activa == "mosaico":
             st.markdown("### 🎛️ Espacio de Estudio y Fuentes")
             
@@ -527,7 +566,7 @@ else:
                     st.rerun()
 
             with c_m3:
-                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🗂️</div><h4 style="margin:4px 0;">Flashcards</h4><p style="color:#64748B;font-size:12px;">Tarjetas interactivas</p></div>', unsafe_allow_html=True)
+                st.markdown('<div class="mosaic-card"><div style="font-size: 34px;">🗂️</div><h4 style="margin:4px 0;">Flashcards</h4><p style="color:#64748B;font-size:12px;">Tarjetas de memoria</p></div>', unsafe_allow_html=True)
                 if st.button("Estudiar Tarjetas", key="b_flash", use_container_width=True):
                     st.session_state.seccion_activa = "flashcards"
                     st.rerun()
@@ -564,23 +603,30 @@ else:
                     st.rerun()
 
         # ----------------------------------------------------------------------
-        # SECCIONES
+        # SECCIONES ESPECÍFICAS
         # ----------------------------------------------------------------------
         
-        # 1. MATERIALES
+        # 1. MATERIALES (CON GUARDADO INMEDIATO)
         elif st.session_state.seccion_activa == "materiales":
-            st.subheader("📂 Fuentes y Materiales")
-            subidos = st.file_uploader("Subir archivos:", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            st.subheader("📂 Fuentes y Materiales Guardados")
+            st.info("💡 **Importante:** Espera a que la barra de carga del archivo llegue al 100% y aparezca en la lista de abajo antes de cambiar de sección.")
+            
+            subidos = st.file_uploader("Selecciona archivos PDF o audios MP3/M4A:", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
             if subidos:
+                guardados_nuevos = False
                 for arc in subidos:
-                    with open(ruta_asig / arc.name, "wb") as f:
-                        f.write(arc.getbuffer())
-                st.success("¡Archivos guardados en disco!")
-                st.rerun()
+                    destino = ruta_asig / arc.name
+                    if not destino.exists() or destino.stat().st_size != arc.size:
+                        with open(destino, "wb") as f:
+                            f.write(arc.getbuffer())
+                        guardados_nuevos = True
+                if guardados_nuevos:
+                    st.success("✅ Archivo(s) guardado(s) permanentemente en el servidor.")
+                    st.rerun()
                 
             archivos_actuales = obtener_archivos_materia(ruta_asig)
             if archivos_actuales:
-                st.markdown("#### 📄 Archivos Guardados:")
+                st.markdown("#### 📄 Archivos Almacenados en esta Asignatura:")
                 for f in archivos_actuales:
                     cf1, cf2 = st.columns([4, 1])
                     tam = round(f.stat().st_size / (1024 * 1024), 2)
@@ -589,17 +635,17 @@ else:
                         f.unlink()
                         st.rerun()
             else:
-                st.info("No hay archivos subidos todavía.")
+                st.info("No hay archivos guardados todavía en esta asignatura.")
 
-        # 2. CUADERNO DE ESTUDIO (SEGUNDO PLANO)
+        # 2. CUADERNO DE ESTUDIO (SEGUNDO PLANO TOTALMENTE DESVINCULADO)
         elif st.session_state.seccion_activa == "apuntes":
             st.subheader("✨ Cuaderno de Estudio Inteligente")
             f_apuntes = ruta_asig / "apuntes_guardados.txt"
             estado_sync = leer_json(ruta_asig / "estado_sync.json", {})
             
             if estado_sync.get("estado") == "running":
-                st.info(f"⏳ **Chopi está procesando tus materiales en segundo plano:** {estado_sync.get('progreso')}\n\nPuedes navegar libremente; el servidor sigue trabajando.")
-                if st.button("🔄 Comprobar Estado"):
+                st.info(f"⏳ **Chopi está procesando tus materiales en segundo plano:** {estado_sync.get('progreso')}\n\n*Puedes navegar libremente por la app o salirte; el servidor seguirá trabajando.*")
+                if st.button("🔄 Comprobar si ya ha terminado"):
                     st.rerun()
             else:
                 c_btn1, c_btn2 = st.columns([2, 1])
@@ -635,9 +681,9 @@ else:
                 """, unsafe_allow_html=True)
             else:
                 if estado_sync.get("estado") != "running":
-                    st.info("Pulsa el botón de arriba para generar los apuntes.")
+                    st.info("Pulsa el botón de arriba para comenzar la síntesis de tus materiales.")
 
-        # 3. FLASHCARDS INTERACTIVAS (ESTILO STUDYFETCH)
+        # 3. FLASHCARDS
         elif st.session_state.seccion_activa == "flashcards":
             st.subheader("🗂️ Tarjetas de Memorización (Flashcards)")
             f_flash = ruta_asig / "flashcards.json"
@@ -650,7 +696,7 @@ else:
                         Genera una baraja de 10 flashcards esenciales para la asignatura: {asig_sel}.
                         Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
                         
-                        Devuelve EXCLUSIVAMENTE un JSON:
+                        Devuelve EXCLUSIVAMENTE un JSON válido con esta estructura:
                         [
                           {{"anverso": "Concepto o pregunta clave", "reverso": "Definición o respuesta sintética"}}
                         ]
@@ -658,343 +704,4 @@ else:
                         res_fl = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_flash)
                         raw = res_fl.text.strip()
                         if raw.startswith("```json"): raw = raw[7:]
-                        if raw.endswith("```"): raw = raw[:-3]
-                        escribir_json(f_flash, json.loads(raw.strip()))
-                        st.session_state.card_idx = 0
-                        st.session_state.card_flipped = False
-                        st.session_state.xp += 20
-                        st.rerun()
-
-            cartas = leer_json(f_flash, [])
-            if cartas:
-                if "card_idx" not in st.session_state: st.session_state.card_idx = 0
-                if "card_flipped" not in st.session_state: st.session_state.card_flipped = False
-                
-                idx = st.session_state.card_idx % len(cartas)
-                c_act = cartas[idx]
-                
-                texto_mostrar = c_act["reverso"] if st.session_state.card_flipped else c_act["anverso"]
-                lado = "💡 Respuesta (Reverso)" if st.session_state.card_flipped else "❓ Pregunta (Anverso)"
-                
-                st.caption(f"Tarjeta {idx + 1} de {len(cartas)} — {lado}")
-                st.markdown(f'<div class="flashcard-box">{texto_mostrar}</div>', unsafe_allow_html=True)
-                
-                c_f1, c_f2, c_f3 = st.columns([1, 2, 1])
-                with c_f1:
-                    if st.button("⬅️ Anterior"):
-                        st.session_state.card_idx = (idx - 1) % len(cartas)
-                        st.session_state.card_flipped = False
-                        st.rerun()
-                with c_f2:
-                    if st.button("🔄 Voltear Tarjeta", use_container_width=True):
-                        st.session_state.card_flipped = not st.session_state.card_flipped
-                        st.rerun()
-                with c_f3:
-                    if st.button("Siguiente ➡️"):
-                        st.session_state.card_idx = (idx + 1) % len(cartas)
-                        st.session_state.card_flipped = False
-                        st.rerun()
-            else:
-                st.info("Pulsa el botón para generar las flashcards de esta materia.")
-
-        # 4. GUÍA RÁPIDA / BRIEFING DOC (ESTILO NOTEBOOKLM)
-        elif st.session_state.seccion_activa == "guia":
-            st.subheader("📋 Guía Rápida de Estudio & Conceptos Clave")
-            f_guia = ruta_asig / "guia_estudio.txt"
-            
-            if st.button("📑 Generar Hoja de Síntesis Ejecutiva"):
-                if client:
-                    with st.spinner("Redactando guía rápida..."):
-                        p_guia = f"""
-                        Genera un 'Study Guide / Briefing Doc' de 1 página para {asig_sel} (Nivel: {nivel_estudiante}):
-                        1. Resumen Ejecutivo en 3 párrafos.
-                        2. Glosario de 8 Términos Clave indispensables.
-                        3. Cronología o Hitos Básicos.
-                        4. 3 Preguntas de Reflexión.
-                        """
-                        res_g = client.models.generate_content(model='gemini-3.5-flash', contents=p_guia)
-                        with open(f_guia, "w", encoding="utf-8") as f:
-                            f.write(res_g.text)
-                        st.session_state.xp += 25
-                        st.rerun()
-                        
-            if f_guia.exists():
-                with open(f_guia, "r", encoding="utf-8") as f:
-                    txt_g = f.read()
-                pdf_g = generar_pdf_documento(f"Guía Rápida: {asig_sel}", f"Nivel: {nivel_estudiante}", txt_g)
-                st.download_button("📄 Descargar Guía en PDF", data=pdf_g, file_name=f"Guia_{asig_sel}.pdf", mime="application/pdf")
-                st.markdown(f'<div class="apunte-container">{txt_g}</div>', unsafe_allow_html=True)
-
-        # 5. PODCAST
-        elif st.session_state.seccion_activa == "podcast":
-            st.subheader("🎙️ Lección en Podcast Académico (MP3)")
-            f_podcast_audio = ruta_asig / "podcast.mp3"
-            f_podcast_guion = ruta_asig / "guion_podcast.txt"
-            
-            duracion_pod = st.select_slider("Estilo de narración:", options=["Resumen Rápido (3-4 min)", "Lección Completa (8-10 min)"])
-            
-            if st.button("🎧 Generar Podcast en MP3"):
-                if client:
-                    with st.spinner("Redactando guion y grabando voz..."):
-                        archivos = obtener_archivos_materia(ruta_asig)
-                        archivos_remotos = []
-                        for r in archivos:
-                            if r.suffix.lower() in [".mp3", ".m4a", ".wav", ".pdf"]:
-                                sub = client.files.upload(file=str(r))
-                                while sub.state and sub.state.name == "PROCESSING":
-                                    time.sleep(3)
-                                    sub = client.files.get(name=sub.name)
-                                archivos_remotos.append(sub)
-                                
-                        prompt_pod = f"""
-                        Actúa como el locutor de un podcast educativo de alto nivel.
-                        Asignatura: {asig_sel}. Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
-                        Estilo: {duracion_pod}.
-                        
-                        Redacta el guion hablado completo, en primera persona, sin acotaciones teatrales, con tono ameno pero riguroso.
-                        """
-                        res_pod = client.models.generate_content(model='gemini-3.5-flash', contents=[prompt_pod] + archivos_remotos)
-                        guion_texto = res_pod.text
-                        
-                        with open(f_podcast_guion, "w", encoding="utf-8") as f:
-                            f.write(guion_texto)
-                            
-                        tts = gTTS(text=guion_texto, lang='es', tld='es')
-                        tts.save(str(f_podcast_audio))
-                        
-                        st.session_state.xp += 35
-                        st.success("¡Podcast generado!")
-                        st.rerun()
-                        
-            if f_podcast_audio.exists():
-                st.markdown("### 📻 Reproductor de Audio:")
-                with open(f_podcast_audio, "rb") as audio_file:
-                    audio_bytes = audio_file.read()
-                st.audio(audio_bytes, format='audio/mp3')
-                
-                st.download_button(
-                    label="📥 Descargar Podcast (.MP3)",
-                    data=audio_bytes,
-                    file_name=f"Podcast_{asig_sel}.mp3",
-                    mime="audio/mp3",
-                    use_container_width=True
-                )
-
-        # 6. EXÁMENES (ESTUDIO ACTIVO)
-        elif st.session_state.seccion_activa == "examenes":
-            st.subheader("🎯 Creador de Exámenes (Test, Desarrollo & PDF)")
-            
-            historial_ex = leer_json(ruta_asig / "examenes_historial.json", [])
-            if historial_ex:
-                media_total = sum([x["nota"] for x in historial_ex]) / len(historial_ex)
-                st.success(f"📊 **Nota Media Acumulada: {media_total:.2f} / 10** ({len(historial_ex)} exámenes realizados)")
-                
-            modalidad = st.selectbox("Modalidad de Examen:", ["Mixto (Test + Desarrollo)", "Solo Redacción y Desarrollo Puro", "Solo Tipo Test Interactivo"])
-            
-            col_cfg1, col_cfg2 = st.columns(2)
-            if modalidad == "Solo Tipo Test Interactivo":
-                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 30, 10)
-                n_redaccion = 0
-            elif modalidad == "Solo Redacción y Desarrollo Puro":
-                n_test = 0
-                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 8, 3)
-            else:
-                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 20, 5)
-                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 5, 2)
-                
-            archivos_disponibles = [f.name for f in obtener_archivos_materia(ruta_asig)]
-            elegir_todos = st.checkbox("✅ Incluir todos los materiales", value=True)
-            materiales_sel = []
-            if not elegir_todos and archivos_disponibles:
-                for arc_n in archivos_disponibles:
-                    if st.checkbox(arc_n, value=False, key=f"mat_sel_{arc_n}"):
-                        materiales_sel.append(arc_n)
-            else:
-                materiales_sel = archivos_disponibles
-                
-            if st.button("🚀 Iniciar Examen"):
-                if client:
-                    with st.spinner("Redactando cuestionario..."):
-                        prompt_json = f"""
-                        Genera un examen para: {asig_sel}.
-                        Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
-                        Materiales: {', '.join(materiales_sel) if materiales_sel else 'Currículo oficial'}.
-                        Configuración: {n_test} preguntas test, {n_redaccion} preguntas desarrollo.
-                        
-                        Devuelve EXCLUSIVAMENTE un objeto JSON:
-                        {{
-                          "preguntas_test": [
-                            {{
-                              "pregunta": "¿Texto pregunta test?",
-                              "opciones": ["A", "B", "C", "D"],
-                              "correcta": 0,
-                              "explicacion": "Explicación de la respuesta."
-                            }}
-                          ],
-                          "preguntas_desarrollo": [
-                            {{
-                              "enunciado": "Enunciado del tema de desarrollo.",
-                              "criterios_correccion": "Conceptos clave requeridos."
-                            }}
-                          ]
-                        }}
-                        """
-                        try:
-                            res = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_json)
-                            raw_text = res.text.strip()
-                            if raw_text.startswith("```json"): raw_text = raw_text[7:]
-                            if raw_text.endswith("```"): raw_text = raw_text[:-3]
-                            data_ex = json.loads(raw_text.strip())
-                            st.session_state[f"examen_activo_{asig_sel}"] = data_ex
-                            st.session_state[f"respuestas_usuario_{asig_sel}"] = {}
-                            st.session_state[f"corregido_{asig_sel}"] = False
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al generar examen: {e}")
-
-            if f"examen_activo_{asig_sel}" in st.session_state:
-                examen = st.session_state[f"examen_activo_{asig_sel}"]
-                tests = examen.get("preguntas_test", [])
-                desarrollos = examen.get("preguntas_desarrollo", [])
-                
-                texto_examen_markdown = f"# Examen: {asig_sel}\n\n"
-                if tests:
-                    texto_examen_markdown += "## Parte 1: Preguntas Tipo Test\n"
-                    for i, p in enumerate(tests):
-                        texto_examen_markdown += f"\n**{i+1}. {p['pregunta']}**\n"
-                        for opt in p['opciones']: texto_examen_markdown += f"- {opt}\n"
-                if desarrollos:
-                    texto_examen_markdown += "\n## Parte 2: Preguntas de Desarrollo\n"
-                    for j, d in enumerate(desarrollos):
-                        texto_examen_markdown += f"\n**Tema {j+1}:** {d['enunciado']}\n"
-                
-                pdf_examen_bytes = generar_pdf_documento(f"Examen: {asig_sel}", f"Nivel: {nivel_estudiante}", texto_examen_markdown)
-                st.download_button(
-                    label="📄 Descargar este Examen en PDF",
-                    data=pdf_examen_bytes,
-                    file_name=f"Examen_{asig_sel}.pdf",
-                    mime="application/pdf"
-                )
-                st.markdown("---")
-                
-                if tests:
-                    st.markdown("### 📝 Preguntas Tipo Test")
-                    for i, p in enumerate(tests):
-                        st.markdown(f"**Pregunta {i+1}: {p['pregunta']}**")
-                        st.session_state[f"respuestas_usuario_{asig_sel}"][i] = st.radio(
-                            f"Respuesta {i+1}:",
-                            options=list(range(len(p["opciones"]))),
-                            format_func=lambda opt_idx: p["opciones"][opt_idx],
-                            key=f"radio_p_{asig_sel}_{i}",
-                            label_visibility="collapsed"
-                        )
-                        st.markdown("---")
-                        
-                if desarrollos:
-                    st.markdown("### ✍️ Preguntas de Redacción / Desarrollo")
-                    for j, d in enumerate(desarrollos):
-                        st.markdown(f"**Tema/Pregunta {j+1}:** {d['enunciado']}")
-                        st.text_area(f"Escribe tu redacción ({j+1}):", height=120, key=f"redaccion_{asig_sel}_{j}")
-                        with st.expander("🔍 Ver Criterios de Corrección"):
-                            st.info(d["criterios_correccion"])
-                        st.markdown("---")
-                        
-                if tests and st.button("🏁 Corregir Examen Test"):
-                    st.session_state[f"corregido_{asig_sel}"] = True
-                    
-                if st.session_state.get(f"corregido_{asig_sel}", False) and tests:
-                    aciertos = 0
-                    st.markdown("## 📊 Corrección Razonada")
-                    for i, p in enumerate(tests):
-                        resp_u = st.session_state[f"respuestas_usuario_{asig_sel}"].get(i, None)
-                        if resp_u == p["correcta"]:
-                            aciertos += 1
-                            st.success(f"✅ **Pregunta {i+1}: ¡Correcta!**\n\nTu respuesta: {p['opciones'][resp_u]}\n\n💡 {p['explicacion']}")
-                        else:
-                            st.error(f"❌ **Pregunta {i+1}: Fallo**\n\nTu respuesta: {p['opciones'][resp_u] if resp_u is not None else 'Sin responder'}\n\nRespuesta correcta: **{p['opciones'][p['correcta']]}**\n\n💡 **¿Por qué has fallado?:** {p['explicacion']}")
-                            
-                    nota_obtenida = round((aciertos / len(tests)) * 10, 2)
-                    st.markdown(f"### 🏆 Calificación Test: **{nota_obtenida} / 10**")
-                    
-                    if st.button("💾 Guardar Nota en Expediente"):
-                        historial_ex.append({"fecha": str(date.today()), "nota": nota_obtenida, "preguntas": len(tests)})
-                        escribir_json(ruta_asig / "examenes_historial.json", historial_ex)
-                        st.session_state.xp += int(nota_obtenida * 5)
-                        st.success("Nota registrada.")
-                        del st.session_state[f"examen_activo_{asig_sel}"]
-                        st.rerun()
-
-        # 7. AUDITOR DE TRABAJOS
-        elif st.session_state.seccion_activa == "trabajos":
-            st.subheader("📑 Corrector y Evaluador de Trabajos y Ensayos")
-            trabajo_texto = st.text_area("Pega tu trabajo o ensayo:", height=200)
-            rubrica_usr = st.text_area("Rúbrica específica (opcional):", placeholder="Si lo dejas en blanco, aplicará criterios universitarios de Grado de Historia...")
-            
-            if st.button("🔍 Evaluar Trabajo"):
-                if trabajo_texto and client:
-                    with st.spinner("Evaluando con rigor académico..."):
-                        prompt_eval = f"""
-                        Evalúa este trabajo para {asig_sel} (Nivel: {nivel_estudiante}):
-                        {f'Rúbrica: {rubrica_usr}' if rubrica_usr.strip() else 'Criterios de Grado de Historia: rigor historiográfico, fuentes, coherencia y sintaxis.'}
-                        
-                        Trabajo:
-                        \"\"\"{trabajo_texto}\"\"\"
-                        
-                        Estructura: 1. Calificación Final (0-10), 2. Puntos Fuertes, 3. Errores, 4. Sugerencias de Redacción.
-                        """
-                        res_eval = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_eval)
-                        st.session_state[f"evaluacion_{asig_sel}"] = res_eval.text
-                        st.session_state.xp += 40
-                        st.rerun()
-                        
-            if f"evaluacion_{asig_sel}" in st.session_state:
-                st.markdown("---")
-                st.markdown(st.session_state[f"evaluacion_{asig_sel}"])
-
-        # 8. TUTOR VISUAL / CHAT CON FUENTES (ESTILO NOTEBOOKLM)
-        elif st.session_state.seccion_activa == "tutor":
-            st.subheader("🤖 Tutor Visual & Chat con Fuentes (Con Descarga PDF)")
-            duda = st.text_input("Formula tu consulta académica sobre esta asignatura:")
-            
-            if duda and client:
-                with st.spinner("Consultando tus apuntes y preparando la respuesta visual..."):
-                    # Cargar apuntes existentes como fuente si existen
-                    f_ap = ruta_asig / "apuntes_guardados.txt"
-                    apuntes_fuente = f_ap.read_text(encoding="utf-8") if f_ap.exists() else "No hay apuntes previos."
-                    
-                    prompt_tutor_visual = f"""
-                    Actúa como docente titular en {asig_sel} para nivel {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
-                    
-                    Contexto de los apuntes de clase:
-                    \"\"\"{apuntes_fuente[:4000]}\"\"\"
-                    
-                    Pregunta: "{duda}"
-                    
-                    INSTRUCCIONES VISUALES: 
-                    1. Responde de forma muy gráfica y clara.
-                    2. Incluye un esquema o mapa conceptual con cajas de texto (#, ##).
-                    3. Tablas comparativas o líneas temporales.
-                    4. Termina con un bloque de '💡 Ideas Clave para Recordar'.
-                    """
-                    res_tut = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_tutor_visual)
-                    st.session_state[f"tutor_resp_{asig_sel}"] = res_tut.text
-                    st.session_state[f"tutor_duda_{asig_sel}"] = duda
-                    
-            if f"tutor_resp_{asig_sel}" in st.session_state:
-                st.markdown("---")
-                pdf_tutor_bytes = generar_pdf_documento(
-                    f"Consulta Tutor: {asig_sel}",
-                    f"Pregunta: {st.session_state.get(f'tutor_duda_{asig_sel}', '')}",
-                    st.session_state[f"tutor_resp_{asig_sel}"]
-                )
-                st.download_button(
-                    label="📄 Descargar esta Explicación en PDF",
-                    data=pdf_tutor_bytes,
-                    file_name=f"Tutor_{asig_sel}.pdf",
-                    mime="application/pdf"
-                )
-                st.markdown(f"""
-                    <div class="apunte-container">
-                        {st.session_state[f"tutor_resp_{asig_sel}"]}
-                    </div>
-                """, unsafe_allow_html=True)
+                        if raw.endswith("
