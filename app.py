@@ -27,7 +27,7 @@ st.set_page_config(
 # --- ESTILOS CSS REFINADOS ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
     .main { background-color: #F8FAFC; }
     
@@ -149,8 +149,22 @@ def escribir_json(ruta_f, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def obtener_archivos_materia(ruta_asig):
-    excluidos = ["apuntes_guardados.txt", "estado_sync.json", "metadata.json", "examenes_historial.json", "podcast.mp3", "guion_podcast.txt", "flashcards.json", "guia_estudio.txt"]
+    excluidos = [
+        "apuntes_guardados.txt", "estado_sync.json", "metadata.json",
+        "examenes_historial.json", "podcast.mp3", "guion_podcast.txt",
+        "flashcards.json", "guia_estudio.txt", "estado_podcast.json"
+    ]
     return [f for f in ruta_asig.glob("*") if f.is_file() and f.name not in excluidos]
+
+def limpiar_respuesta_json(texto_crudo):
+    t = texto_crudo.strip()
+    if t.startswith("```"):
+        lineas = t.splitlines()
+        if len(lineas) > 1 and lineas[0].startswith("```"):
+            t = "\n".join(lineas[1:])
+        if t.endswith("```"):
+            t = t[:-3]
+    return t.strip()
 
 # --- GENERADOR DE PDF (ReportLab) ---
 def generar_pdf_documento(titulo_doc, subtitulo_doc, contenido_markdown):
@@ -203,7 +217,6 @@ def tarea_servidor_generar_apuntes(api_key, ruta_asig_str, asig_nombre, nivel_ed
         for r in archivos:
             if r.suffix.lower() in [".mp3", ".m4a", ".wav", ".pdf"]:
                 sub = cliente_fondo.files.upload(file=str(r))
-                # Espera activa si es un archivo de audio pesado
                 while sub.state and sub.state.name == "PROCESSING":
                     time.sleep(3)
                     sub = cliente_fondo.files.get(name=sub.name)
@@ -606,7 +619,7 @@ else:
         # SECCIONES ESPECÍFICAS
         # ----------------------------------------------------------------------
         
-        # 1. MATERIALES (CON GUARDADO INMEDIATO)
+        # 1. MATERIALES
         elif st.session_state.seccion_activa == "materiales":
             st.subheader("📂 Fuentes y Materiales Guardados")
             st.info("💡 **Importante:** Espera a que la barra de carga del archivo llegue al 100% y aparezca en la lista de abajo antes de cambiar de sección.")
@@ -637,7 +650,7 @@ else:
             else:
                 st.info("No hay archivos guardados todavía en esta asignatura.")
 
-        # 2. CUADERNO DE ESTUDIO (SEGUNDO PLANO TOTALMENTE DESVINCULADO)
+        # 2. CUADERNO DE ESTUDIO
         elif st.session_state.seccion_activa == "apuntes":
             st.subheader("✨ Cuaderno de Estudio Inteligente")
             f_apuntes = ruta_asig / "apuntes_guardados.txt"
@@ -702,6 +715,323 @@ else:
                         ]
                         """
                         res_fl = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_flash)
-                        raw = res_fl.text.strip()
-                        if raw.startswith("```json"): raw = raw[7:]
-                        if raw.endswith("
+                        json_limpio = limpiar_respuesta_json(res_fl.text)
+                        escribir_json(f_flash, json.loads(json_limpio))
+                        st.session_state.card_idx = 0
+                        st.session_state.card_flipped = False
+                        st.session_state.xp += 20
+                        st.rerun()
+
+            cartas = leer_json(f_flash, [])
+            if cartas:
+                if "card_idx" not in st.session_state: st.session_state.card_idx = 0
+                if "card_flipped" not in st.session_state: st.session_state.card_flipped = False
+                
+                idx = st.session_state.card_idx % len(cartas)
+                c_act = cartas[idx]
+                
+                texto_mostrar = c_act["reverso"] if st.session_state.card_flipped else c_act["anverso"]
+                lado = "💡 Respuesta (Reverso)" if st.session_state.card_flipped else "❓ Pregunta (Anverso)"
+                
+                st.caption(f"Tarjeta {idx + 1} de {len(cartas)} — {lado}")
+                st.markdown(f'<div class="flashcard-box">{texto_mostrar}</div>', unsafe_allow_html=True)
+                
+                c_f1, c_f2, c_f3 = st.columns([1, 2, 1])
+                with c_f1:
+                    if st.button("⬅️ Anterior"):
+                        st.session_state.card_idx = (idx - 1) % len(cartas)
+                        st.session_state.card_flipped = False
+                        st.rerun()
+                with c_f2:
+                    if st.button("🔄 Voltear Tarjeta", use_container_width=True):
+                        st.session_state.card_flipped = not st.session_state.card_flipped
+                        st.rerun()
+                with c_f3:
+                    if st.button("Siguiente ➡️"):
+                        st.session_state.card_idx = (idx + 1) % len(cartas)
+                        st.session_state.card_flipped = False
+                        st.rerun()
+            else:
+                st.info("Pulsa el botón para generar las flashcards de esta materia.")
+
+        # 4. GUÍA RÁPIDA
+        elif st.session_state.seccion_activa == "guia":
+            st.subheader("📋 Guía Rápida de Estudio & Briefing Doc")
+            f_guia = ruta_asig / "guia_estudio.txt"
+            
+            if st.button("📑 Generar Hoja de Síntesis"):
+                if client:
+                    with st.spinner("Redactando guía ejecutiva..."):
+                        p_guia = f"""
+                        Genera un 'Study Guide' de 1 página para {asig_sel} (Nivel: {nivel_estudiante}):
+                        1. Resumen Ejecutivo en 3 párrafos.
+                        2. Glosario de 8 Términos Clave.
+                        3. Cronología o Hitos Básicos.
+                        4. 3 Preguntas Clave.
+                        """
+                        res_g = client.models.generate_content(model='gemini-3.5-flash', contents=p_guia)
+                        with open(f_guia, "w", encoding="utf-8") as f:
+                            f.write(res_g.text)
+                        st.session_state.xp += 25
+                        st.rerun()
+                        
+            if f_guia.exists():
+                with open(f_guia, "r", encoding="utf-8") as f:
+                    txt_g = f.read()
+                pdf_g = generar_pdf_documento(f"Guía Rápida: {asig_sel}", f"Nivel: {nivel_estudiante}", txt_g)
+                st.download_button("📄 Descargar Guía en PDF", data=pdf_g, file_name=f"Guia_{asig_sel}.pdf", mime="application/pdf")
+                st.markdown(f'<div class="apunte-container">{txt_g}</div>', unsafe_allow_html=True)
+
+        # 5. PODCAST
+        elif st.session_state.seccion_activa == "podcast":
+            st.subheader("🎙️ Lección en Podcast Académico (MP3)")
+            f_podcast_audio = ruta_asig / "podcast.mp3"
+            f_podcast_guion = ruta_asig / "guion_podcast.txt"
+            st_pod = leer_json(ruta_asig / "estado_podcast.json", {})
+            
+            duracion_pod = st.select_slider("Estilo de narración:", options=["Resumen Rápido (3-4 min)", "Lección Completa (8-10 min)"])
+            
+            if st_pod.get("estado") == "running":
+                st.info(f"⏳ **Grabando podcast en segundo plano:** {st_pod.get('progreso')}")
+                if st.button("🔄 Comprobar Estado"):
+                    st.rerun()
+            else:
+                if st.button("🎧 Generar Podcast en MP3 (En Segundo Plano)"):
+                    if client:
+                        escribir_json(ruta_asig / "estado_podcast.json", {"estado": "running", "progreso": "Iniciando grabación..."})
+                        worker_global.submit(
+                            tarea_servidor_generar_podcast,
+                            API_KEY, str(ruta_asig), asig_sel, nivel_estudiante, rama_bach, duracion_pod
+                        )
+                        st.session_state.xp += 35
+                        st.rerun()
+                        
+            if f_podcast_audio.exists():
+                st.markdown("### 📻 Reproductor de Audio:")
+                with open(f_podcast_audio, "rb") as audio_file:
+                    audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format='audio/mp3')
+                
+                st.download_button(
+                    label="📥 Descargar Podcast (.MP3)",
+                    data=audio_bytes,
+                    file_name=f"Podcast_{asig_sel}.mp3",
+                    mime="audio/mp3",
+                    use_container_width=True
+                )
+
+        # 6. EXÁMENES
+        elif st.session_state.seccion_activa == "examenes":
+            st.subheader("🎯 Creador de Exámenes (Test, Desarrollo & PDF)")
+            
+            historial_ex = leer_json(ruta_asig / "examenes_historial.json", [])
+            if historial_ex:
+                media_total = sum([x["nota"] for x in historial_ex]) / len(historial_ex)
+                st.success(f"📊 **Nota Media Acumulada: {media_total:.2f} / 10** ({len(historial_ex)} exámenes realizados)")
+                
+            modalidad = st.selectbox("Modalidad de Examen:", ["Mixto (Test + Desarrollo)", "Solo Redacción y Desarrollo Puro", "Solo Tipo Test Interactivo"])
+            
+            col_cfg1, col_cfg2 = st.columns(2)
+            if modalidad == "Solo Tipo Test Interactivo":
+                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 30, 10)
+                n_redaccion = 0
+            elif modalidad == "Solo Redacción y Desarrollo Puro":
+                n_test = 0
+                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 8, 3)
+            else:
+                with col_cfg1: n_test = st.slider("Preguntas Tipo Test:", 3, 20, 5)
+                with col_cfg2: n_redaccion = st.slider("Preguntas de Redacción:", 1, 5, 2)
+                
+            archivos_disponibles = [f.name for f in obtener_archivos_materia(ruta_asig)]
+            elegir_todos = st.checkbox("✅ Incluir todos los materiales", value=True)
+            materiales_sel = []
+            if not elegir_todos and archivos_disponibles:
+                for arc_n in archivos_disponibles:
+                    if st.checkbox(arc_n, value=False, key=f"mat_sel_{arc_n}"):
+                        materiales_sel.append(arc_n)
+            else:
+                materiales_sel = archivos_disponibles
+                
+            if st.button("🚀 Iniciar Examen"):
+                if client:
+                    with st.spinner("Redactando cuestionario..."):
+                        prompt_json = f"""
+                        Genera un examen para: {asig_sel}.
+                        Nivel: {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
+                        Materiales: {', '.join(materiales_sel) if materiales_sel else 'Currículo oficial'}.
+                        Configuración: {n_test} preguntas test, {n_redaccion} preguntas desarrollo.
+                        
+                        Devuelve EXCLUSIVAMENTE un objeto JSON:
+                        {{
+                          "preguntas_test": [
+                            {{
+                              "pregunta": "¿Texto pregunta test?",
+                              "opciones": ["A", "B", "C", "D"],
+                              "correcta": 0,
+                              "explicacion": "Explicación de la respuesta."
+                            }}
+                          ],
+                          "preguntas_desarrollo": [
+                            {{
+                              "enunciado": "Enunciado del tema de desarrollo.",
+                              "criterios_correccion": "Conceptos clave requeridos."
+                            }}
+                          ]
+                        }}
+                        """
+                        try:
+                            res = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_json)
+                            json_limpio = limpiar_respuesta_json(res.text)
+                            data_ex = json.loads(json_limpio)
+                            st.session_state[f"examen_activo_{asig_sel}"] = data_ex
+                            st.session_state[f"respuestas_usuario_{asig_sel}"] = {}
+                            st.session_state[f"corregido_{asig_sel}"] = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al generar examen: {e}")
+
+            if f"examen_activo_{asig_sel}" in st.session_state:
+                examen = st.session_state[f"examen_activo_{asig_sel}"]
+                tests = examen.get("preguntas_test", [])
+                desarrollos = examen.get("preguntas_desarrollo", [])
+                
+                texto_examen_markdown = f"# Examen: {asig_sel}\n\n"
+                if tests:
+                    texto_examen_markdown += "## Parte 1: Preguntas Tipo Test\n"
+                    for i, p in enumerate(tests):
+                        texto_examen_markdown += f"\n**{i+1}. {p['pregunta']}**\n"
+                        for opt in p['opciones']: texto_examen_markdown += f"- {opt}\n"
+                if desarrollos:
+                    texto_examen_markdown += "\n## Parte 2: Preguntas de Desarrollo\n"
+                    for j, d in enumerate(desarrollos):
+                        texto_examen_markdown += f"\n**Tema {j+1}:** {d['enunciado']}\n"
+                
+                pdf_examen_bytes = generar_pdf_documento(f"Examen: {asig_sel}", f"Nivel: {nivel_estudiante}", texto_examen_markdown)
+                st.download_button(
+                    label="📄 Descargar este Examen en PDF",
+                    data=pdf_examen_bytes,
+                    file_name=f"Examen_{asig_sel}.pdf",
+                    mime="application/pdf"
+                )
+                st.markdown("---")
+                
+                if tests:
+                    st.markdown("### 📝 Preguntas Tipo Test")
+                    for i, p in enumerate(tests):
+                        st.markdown(f"**Pregunta {i+1}: {p['pregunta']}**")
+                        st.session_state[f"respuestas_usuario_{asig_sel}"][i] = st.radio(
+                            f"Respuesta {i+1}:",
+                            options=list(range(len(p["opciones"]))),
+                            format_func=lambda opt_idx: p["opciones"][opt_idx],
+                            key=f"radio_p_{asig_sel}_{i}",
+                            label_visibility="collapsed"
+                        )
+                        st.markdown("---")
+                        
+                if desarrollos:
+                    st.markdown("### ✍️ Preguntas de Redacción / Desarrollo")
+                    for j, d in enumerate(desarrollos):
+                        st.markdown(f"**Tema/Pregunta {j+1}:** {d['enunciado']}")
+                        st.text_area(f"Escribe tu redacción ({j+1}):", height=120, key=f"redaccion_{asig_sel}_{j}")
+                        with st.expander("🔍 Ver Criterios de Corrección"):
+                            st.info(d["criterios_correccion"])
+                        st.markdown("---")
+                        
+                if tests and st.button("🏁 Corregir Examen Test"):
+                    st.session_state[f"corregido_{asig_sel}"] = True
+                    
+                if st.session_state.get(f"corregido_{asig_sel}", False) and tests:
+                    aciertos = 0
+                    st.markdown("## 📊 Corrección Razonada")
+                    for i, p in enumerate(tests):
+                        resp_u = st.session_state[f"respuestas_usuario_{asig_sel}"].get(i, None)
+                        if resp_u == p["correcta"]:
+                            aciertos += 1
+                            st.success(f"✅ **Pregunta {i+1}: ¡Correcta!**\n\nTu respuesta: {p['opciones'][resp_u]}\n\n💡 {p['explicacion']}")
+                        else:
+                            st.error(f"❌ **Pregunta {i+1}: Fallo**\n\nTu respuesta: {p['opciones'][resp_u] if resp_u is not None else 'Sin responder'}\n\nRespuesta correcta: **{p['opciones'][p['correcta']]}**\n\n💡 **¿Por qué has fallado?:** {p['explicacion']}")
+                            
+                    nota_obtenida = round((aciertos / len(tests)) * 10, 2)
+                    st.markdown(f"### 🏆 Calificación Test: **{nota_obtenida} / 10**")
+                    
+                    if st.button("💾 Guardar Nota en Expediente"):
+                        historial_ex.append({"fecha": str(date.today()), "nota": nota_obtenida, "preguntas": len(tests)})
+                        escribir_json(ruta_asig / "examenes_historial.json", historial_ex)
+                        st.session_state.xp += int(nota_obtenida * 5)
+                        st.success("Nota registrada.")
+                        del st.session_state[f"examen_activo_{asig_sel}"]
+                        st.rerun()
+
+        # 7. AUDITOR DE TRABAJOS
+        elif st.session_state.seccion_activa == "trabajos":
+            st.subheader("📑 Corrector y Evaluador de Trabajos y Ensayos")
+            trabajo_texto = st.text_area("Pega tu trabajo o ensayo:", height=200)
+            rubrica_usr = st.text_area("Rúbrica específica (opcional):", placeholder="Si lo dejas en blanco, aplicará criterios universitarios de Grado de Historia...")
+            
+            if st.button("🔍 Evaluar Trabajo"):
+                if trabajo_texto and client:
+                    with st.spinner("Evaluando con rigor académico..."):
+                        prompt_eval = f"""
+                        Evalúa este trabajo para {asig_sel} (Nivel: {nivel_estudiante}):
+                        {f'Rúbrica: {rubrica_usr}' if rubrica_usr.strip() else 'Criterios de Grado de Historia: rigor historiográfico, fuentes, coherencia y sintaxis.'}
+                        
+                        Trabajo:
+                        \"\"\"{trabajo_texto}\"\"\"
+                        
+                        Estructura: 1. Calificación Final (0-10), 2. Puntos Fuertes, 3. Errores, 4. Sugerencias de Redacción.
+                        """
+                        res_eval = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_eval)
+                        st.session_state[f"evaluacion_{asig_sel}"] = res_eval.text
+                        st.session_state.xp += 40
+                        st.rerun()
+                        
+            if f"evaluacion_{asig_sel}" in st.session_state:
+                st.markdown("---")
+                st.markdown(st.session_state[f"evaluacion_{asig_sel}"])
+
+        # 8. TUTOR VISUAL
+        elif st.session_state.seccion_activa == "tutor":
+            st.subheader("🤖 Tutor Visual & Chat con Fuentes (Con Descarga PDF)")
+            duda = st.text_input("Formula tu consulta académica sobre esta asignatura:")
+            
+            if duda and client:
+                with st.spinner("Consultando tus apuntes y preparando la respuesta visual..."):
+                    f_ap = ruta_asig / "apuntes_guardados.txt"
+                    apuntes_fuente = f_ap.read_text(encoding="utf-8") if f_ap.exists() else "No hay apuntes previos."
+                    
+                    prompt_tutor_visual = f"""
+                    Actúa como docente titular en {asig_sel} para nivel {nivel_estudiante} {f'({rama_bach})' if 'Bachillerato' in nivel_estudiante else ''}.
+                    
+                    Contexto de los apuntes de clase:
+                    \"\"\"{apuntes_fuente[:4000]}\"\"\"
+                    
+                    Pregunta: "{duda}"
+                    
+                    INSTRUCCIONES VISUALES: 
+                    1. Responde de forma gráfica y estructurada.
+                    2. Incluye un esquema o mapa conceptual con cajas de texto (#, ##).
+                    3. Tablas comparativas o líneas temporales.
+                    4. Termina con un bloque de '💡 Ideas Clave para Recordar'.
+                    """
+                    res_tut = client.models.generate_content(model='gemini-3.5-flash', contents=prompt_tutor_visual)
+                    st.session_state[f"tutor_resp_{asig_sel}"] = res_tut.text
+                    st.session_state[f"tutor_duda_{asig_sel}"] = duda
+                    
+            if f"tutor_resp_{asig_sel}" in st.session_state:
+                st.markdown("---")
+                pdf_tutor_bytes = generar_pdf_documento(
+                    f"Consulta Tutor: {asig_sel}",
+                    f"Pregunta: {st.session_state.get(f'tutor_duda_{asig_sel}', '')}",
+                    st.session_state[f"tutor_resp_{asig_sel}"]
+                )
+                st.download_button(
+                    label="📄 Descargar esta Explicación en PDF",
+                    data=pdf_tutor_bytes,
+                    file_name=f"Tutor_{asig_sel}.pdf",
+                    mime="application/pdf"
+                )
+                st.markdown(f"""
+                    <div class="apunte-container">
+                        {st.session_state[f"tutor_resp_{asig_sel}"]}
+                    </div>
+                """, unsafe_allow_html=True)
