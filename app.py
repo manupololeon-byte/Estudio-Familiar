@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS de alta gama: tarjetas flotantes, colores suaves y diseño amable
+# Estilos CSS
 st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
@@ -18,14 +18,14 @@ st.markdown("""
         background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
         border: 1px solid #FFCC80;
         padding: 18px;
-        border-radius: 14px;
+        border_radius: 14px;
         margin-bottom: 20px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.03);
     }
     .card-asignatura {
         background: white;
         padding: 20px;
-        border-radius: 12px;
+        border_radius: 12px;
         border: 1px solid #E2E8F0;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         margin-bottom: 15px;
@@ -34,7 +34,7 @@ st.markdown("""
         background-color: white;
         border-left: 6px solid #E35205;
         padding: 22px;
-        border-radius: 10px;
+        border_radius: 10px;
         box-shadow: 0 3px 6px rgba(0,0,0,0.04);
         margin-top: 15px;
         margin-bottom: 15px;
@@ -68,15 +68,15 @@ if "xp" not in st.session_state:
 if "asig_actual" not in st.session_state:
     st.session_state.asig_actual = None
 
-# --- MASCOTA CHOPI Y RECOMPENSAS ---
+# --- MASCOTA CHOPI ---
 def obtener_estado_chopi(xp):
     nivel = (xp // 100) + 1
     if xp < 250:
-        return f"🐶 Chopi (Nivel {nivel}) - ¡Qué ganas de hincar los codos en el iPad!", "🟢 Alegre", "#E35205"
+        return f"🐶 Chopi (Nivel {nivel}) - ¡Listos para estudiar!", "🟢 Alegre", "#E35205"
     elif xp < 600:
-        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable! ¡Estás bordando los exámenes!", "🔥 Estelar", "#D97706"
+        return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable con los exámenes!", "🔥 Estelar", "#D97706"
     else:
-        return f"👑 Chopi (Nivel {nivel}) - ¡Catedrático Canino Supremo! ¡Nivel Dios!", "💎 Legendario", "#7C3AED"
+        return f"👑 Chopi (Nivel {nivel}) - ¡Catedrático Canino Supremo!", "💎 Legendario", "#7C3AED"
 
 texto_chopi, estado_txt, color_chopi = obtener_estado_chopi(st.session_state.xp)
 
@@ -108,14 +108,12 @@ else:
     perfil_activo = st.selectbox("👤 Usuario Activo", perfiles)
     ruta_perfil = CARPETA_FAMILIAR / perfil_activo
 
-    # --- CONTROL DE NAVEGACIÓN: SI ESTAMOS DENTRO DE UNA ASIGNATURA O EN EL GENERAL ---
     if st.session_state.asig_actual is None:
-        # PANTALLA PRINCIPAL DE ASIGNATURAS
         st.subheader("📚 Mis Asignaturas")
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            nueva_asig = st.text_input("Nombre de Asignatura", label_visibility="collapsed", placeholder="Ej. Historia de España / Geografía")
+            nueva_asig = st.text_input("Nombre de Asignatura", label_visibility="collapsed", placeholder="Ej. Historia de España")
         with col2:
             if st.button("➕ Crear Asignatura"):
                 if nueva_asig:
@@ -126,7 +124,7 @@ else:
         asignaturas = [d.name for d in ruta_perfil.iterdir() if d.is_dir()]
         
         if not asignaturas:
-            st.info("No hay asignaturas creadas todavía. Añade una arriba para empezar.")
+            st.info("No hay asignaturas creadas todavía. Añade una arriba.")
         else:
             st.markdown("---")
             for asig in asignaturas:
@@ -138,34 +136,31 @@ else:
                 
                 col_btn1, col_btn2 = st.columns([2, 2])
                 with col_btn1:
-                    if st.button(f"📂 Entrar a la Asignatura", key=f"entrar_{asig}"):
+                    if st.button(f"📂 Entrar", key=f"entrar_{asig}"):
                         st.session_state.asig_actual = asig
                         st.rerun()
                 with col_btn2:
-                    if st.button(f"🗑️ Borrar Asignatura", key=f"borrar_asig_{asig}"):
+                    if st.button(f"🗑️ Borrar", key=f"borrar_asig_{asig}"):
                         import shutil
                         shutil.rmtree(ruta_perfil / asig)
                         st.rerun()
 
     else:
-        # --- PÁGINA ESPECÍFICA DE LA ASIGNATURA (SECCIONES Y PESTAÑAS) ---
         asig_elegida = st.session_state.asig_actual
         ruta_asig = ruta_perfil / asig_elegida
 
-        if st.button("⬅️ Volver al listado general de asignaturas"):
+        if st.button("⬅️ Volver a Asignaturas"):
             st.session_state.asig_actual = None
             st.rerun()
 
         st.markdown(f"## 📚 Asignatura: {asig_elegida}")
         
-        # Pestañas internas de la asignatura
-        tab_materiales, tab_apuntes, tab_examenes, tab_tutor = st.tabs(["📂 Materiales y Carpetas", "✨ Apuntes Dinámicos", "🎯 Súper Exámenes Pro", "🤖 Tutor IA"])
+        tab_materiales, tab_apuntes, tab_examenes, tab_tutor = st.tabs(["📂 Materiales", "✨ Apuntes Dinámicos", "🎯 Súper Exámenes Pro", "🤖 Tutor IA"])
 
         with tab_materiales:
-            st.subheader("Gestión de Materiales y Apartados")
+            st.subheader("Gestión de Materiales y Carpetas")
             
-            # Crear subcarpetas (temas/apartados)
-            sub_carpeta = st.text_input("Crear apartado o carpeta (ej. Tema 1 - Prehistoria)")
+            sub_carpeta = st.text_input("Crear apartado o carpeta (ej. Tema 1)")
             if st.button("➕ Crear Carpeta"):
                 if sub_carpeta:
                     (ruta_asig / sub_carpeta).mkdir(exist_ok=True)
@@ -173,20 +168,19 @@ else:
                     st.rerun()
 
             carpetas = [d.name for d in ruta_asig.iterdir() if d.is_dir()]
-            carpeta_elegida = st.selectbox("Selecciona carpeta / apartado", ["Raíz (General)"] + carpetas)
+            carpeta_elegida = st.selectbox("Selecciona apartado", ["Raíz (General)"] + carpetas)
             
             ruta_destino = ruta_asig if carpeta_elegida == "Raíz (General)" else ruta_asig / carpeta_elegida
 
-            # Subida de ficheros (PDFs y Audios)
-            archivos_subidos = st.file_uploader(f"Sube archivos a [{carpeta_elegida}] (PDF, MP3, M4A)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            archivos_subidos = st.file_uploader(f"Sube archivos a [{carpeta_elegida}]", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
             if archivos_subidos:
                 for archivo in archivos_subidos:
                     with open(ruta_destino / archivo.name, "wb") as f:
                         f.write(archivo.getbuffer())
-                st.success("¡Archivos subidos con éxito!")
+                st.success("¡Archivos subidos!")
                 st.rerun()
 
-            st.markdown("### 📄 Archivos en este apartado:")
+            st.markdown("### 📄 Archivos actuales:")
             ficheros_actuales = [f.name for f in ruta_destino.iterdir() if f.is_file()]
             if ficheros_actuales:
                 for f in ficheros_actuales:
@@ -201,16 +195,17 @@ else:
                 st.info("No hay archivos en este apartado.")
 
         with tab_apuntes:
-            st.subheader("Apuntes Dinámicos, Visuales y Descargables")
+            st.subheader("Apuntes Dinámicos e Instantáneos")
             
-            todos_los_archivos = [f.name for f in ruta_asig.glob("**/*") if f.is_file()]
+            todos_los_archivos = [str(f.relative_to(ruta_asig)) for f in ruta_asig.glob("**/*") if f.is_file()]
             
             if todos_los_archivos:
-                if client and st.button("✨ Actualizar Apuntes Visuales Automáticamente"):
-                    with st.spinner("Chopi está redactando los apuntes académicos..."):
+                # Botón explícito y rápido para evitar bloqueos de carga en bucle
+                if client and st.button("⚡ Generar / Actualizar Apuntes al Instante"):
+                    with st.spinner("Chopi está redactando los apuntes estructurados..."):
                         prompt_apuntes = f"""
-                        Actúa como un catedrático de Historia. Genera apuntes académicos altamente **visuales, estructurados y atractivos** para la asignatura {asig_elegida}, basándote en los archivos: {', '.join(todos_los_archivos)}.
-                        Utiliza tablas, esquemas conceptuales en texto y tarjetas destacadas.
+                        Actúa como un catedrático de Historia. Redacta unos apuntes académicos sumamente **visuales, estructurados y limpios** para la asignatura {asig_elegida}, basándote en los archivos cargados: {', '.join(todos_los_archivos)}.
+                        Usa viñetas ordenadas, negritas y tablas o bloques destacados. Sé directo y claro.
                         """
                         res_apuntes = client.models.generate_content(
                             model='gemini-3.5-flash',
@@ -225,20 +220,19 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Opción de Exportar a PDF (simulado limpio mediante texto descargable)
                 st.download_button(
-                    label="📥 Exportar Apuntes a PDF / TXT",
+                    label="📥 Descargar Apuntes (TXT / Formato limpio)",
                     data=st.session_state[f"apuntes_{asig_elegida}"],
                     file_name=f"Apuntes_{asig_elegida}.txt",
                     mime="text/plain"
                 )
             else:
-                st.info("Sube archivos en la pestaña anterior para generar los apuntes dinámicos.")
+                st.info("Haz clic en el botón de arriba para generar los apuntes de forma rápida e instantánea.")
 
         with tab_examenes:
-            st.subheader("🎯 Creador de Exámenes Maestros & Calibración 0-10")
+            st.subheader("🎯 Creador de Exámenes Maestros")
             
-            tipo_examen = st.selectbox("Modalidad de Examen", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
+            tipo_examen = st.selectbox("Modalidad", ["Tipo Test", "Solo Redacción / Desarrollo", "Mixto (Test 50% + Redacción 50%)"])
             num_preguntas = st.slider("Número de preguntas (Tipo Test)", 10, 100, 20)
             
             penaliza = False
@@ -246,9 +240,9 @@ else:
                 penaliza = st.checkbox("¿Las respuestas incorrectas restan 0,25 puntos?")
 
             if st.button("🚀 Lanzar Examen Pro") and client:
-                with st.spinner("Chopi está redactando el examen con rigor universitario / curricular..."):
+                with st.spinner("Diseñando examen..."):
                     prompt_ex = f"""
-                    Crea un examen formal de nivel académico para la asignatura {asig_elegida}.
+                    Crea un examen formal para la asignatura {asig_elegida}.
                     Modalidad: {tipo_examen}. Número de preguntas tipo test: {num_preguntas}. 
                     Penalización por fallo: {'Sí (-0.25)' if penaliza else 'No'}.
                     Incluye sus respectivas respuestas o criterios de corrección al final.
@@ -258,7 +252,6 @@ else:
                         contents=prompt_ex
                     )
                     st.session_state[f"examen_{asig_elegida}"] = res_ex.text
-                    # Recompensa Chopi por generar examen
                     st.session_state.xp += 25
 
             if f"examen_{asig_elegida}" in st.session_state:
@@ -269,12 +262,12 @@ else:
                 nota_simulada = st.slider("Asigna tu nota ponderada final (0 a 10)", 0.0, 10.0, 5.0, 0.25)
                 if st.button("💾 Guardar Nota y Recompensar a Chopi"):
                     st.session_state.xp += 50
-                    st.success(f"¡Nota guardada: {nota_simulada} / 10! Chopi ha ganado +50 XP por tu esfuerzo.")
+                    st.success(f"¡Nota guardada: {nota_simulada} / 10! Chopi ha ganado +50 XP.")
                     st.rerun()
 
         with tab_tutor:
-            st.subheader("🤖 Tutor Académico Personalizado")
-            pregunta = st.text_input("Hazle cualquier consulta al tutor de Historia sobre esta asignatura:")
+            st.subheader("🤖 Tutor Académico")
+            pregunta = st.text_input("Consulta al tutor de Historia:")
             if pregunta and client:
                 with st.spinner("El tutor está respondiendo..."):
                     resp_tutor = client.models.generate_content(
