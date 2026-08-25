@@ -23,7 +23,7 @@ st.markdown("""
     .stButton>button {
         background-color: #E35205;
         color: white;
-        border-radius: 8px;
+        border_radius: 8px;
         border: none;
         font-weight: bold;
     }
@@ -35,7 +35,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CONFIGURACIÓN SEGURA DE GEMINI ---
-# Lee la clave de los Secrets de Streamlit Cloud de forma totalmente privada
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=API_KEY)
@@ -68,11 +67,9 @@ st.markdown(f"""
 
 st.title("🎓 Campus Educativo Familiar & Historia")
 
-# Advertencia de API si no está configurada
 if not client:
     st.error("⚠️ Falta configurar la `GEMINI_API_KEY` en los Secrets de Streamlit Cloud.")
 
-# --- GESTIÓN DE PERFILES Y ASIGNATURAS ---
 perfiles = [d.name for d in CARPETA_FAMILIAR.iterdir() if d.is_dir()]
 
 if not perfiles:
@@ -122,14 +119,13 @@ else:
                 for mat in materiales:
                     st.text(f"• {mat}")
                 
-                # --- BOTÓN DE APUNTES DINÁMICOS INTELIGENTES ---
                 if st.button("✨ Generar Apuntes Dinámicos con IA") and client:
                     with st.spinner("Chopi está leyendo y estructurando los apuntes en esquemas visuales..."):
-                        # Construir contexto con los nombres de archivos subidos
                         prompt_apuntes = f"Actúa como un profesor experto. Genera apuntes visuales, esquemáticos y estructurados con gráficos en texto para la asignatura {asig_elegida}, basándote en que disponemos de estos archivos: {', '.join(materiales)}."
                         
+                        # MODELO CORREGIDO A 3.5-flash:
                         respuesta = client.models.generate_content(
-                            model='gemini-2.5-flash',
+                            model='gemini-3.5-flash',
                             contents=prompt_apuntes
                         )
                         st.markdown("### 📋 Apuntes Dinámicos Generados")
@@ -160,7 +156,7 @@ else:
                         prompt_examen = f"Crea un examen de nivel universitario de historia (o adaptado si es primaria/ESO según currículo de Castilla y León) para la(s) asignatura(s) {', '.join(asig_examen)}. Modalidad: {tipo_examen}. Número de preguntas tipo test: {num_preguntas}. Penalización por fallo: {'Sí (-0.25)' if penaliza else 'No'}."
                         
                         res_examen = client.models.generate_content(
-                            model='gemini-2.5-flash',
+                            model='gemini-3.5-flash',
                             contents=prompt_examen
                         )
                         st.markdown("### 📝 Tu Examen Personalizado")
@@ -174,7 +170,7 @@ else:
         if pregunta_usuario and client:
             with st.spinner("El tutor está redactando la explicación..."):
                 resp_tutor = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.5-flash',
                     contents=f"Actúa como tutor académico universitario de Historia (o profesor de apoyo según nivel). Responde de forma didáctica, visual y rigurosa a: {pregunta_usuario}"
                 )
                 st.markdown(resp_tutor.text)
