@@ -10,6 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Estilos CSS muy visuales y modernos (tarjetas, colores e iconos)
 st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
@@ -17,13 +18,21 @@ st.markdown("""
         background-color: #FFF3E0;
         border: 1px solid #FFE0B2;
         padding: 15px;
-        border_radius: 10px;
+        border-radius: 10px;
         margin-bottom: 20px;
+    }
+    .apunte-box {
+        background-color: white;
+        border-left: 5px solid #E35205;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        margin-top: 15px;
     }
     .stButton>button {
         background-color: #E35205;
         color: white;
-        border_radius: 8px;
+        border-radius: 8px;
         border: none;
         font-weight: bold;
     }
@@ -34,7 +43,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURACIÓN SEGURA DE GEMINI ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=API_KEY)
@@ -51,7 +59,7 @@ if "xp" not in st.session_state:
 def obtener_estado_chopi(xp):
     nivel = (xp // 100) + 1
     if xp < 200:
-        return f"🐶 Chopi (Nivel {nivel}) - ¡Listos para estudiar en el iPad!", "🟢 Alegre"
+        return f"🐶 Chopi (Nivel {nivel}) - ¡Estudiando con apuntes visuales!", "🟢 Alegre"
     elif xp < 500:
         return f"🌟 Chopi (Nivel {nivel}) - ¡Imparable con los exámenes!", "🔥 Estelar"
     else:
@@ -86,7 +94,7 @@ else:
     menu = st.sidebar.radio("Navegación", ["📚 Asignaturas y Materiales", "✍️ Súper Exámenes Pro", "🤖 Tutor IA & Podcast"])
 
     if menu == "📚 Asignaturas y Materiales":
-        st.subheader("Gestión de Asignaturas")
+        st.subheader("Gestión de Asignaturas y Apuntes Dinámicos")
         col1, col2 = st.columns([3, 1])
         with col1:
             nueva_asig = st.text_input("Nueva Asignatura", label_visibility="collapsed", placeholder="Ej. Historia Antigua")
@@ -105,33 +113,69 @@ else:
             st.markdown("---")
             st.write(f"📂 Materiales para: **{asig_elegida}**")
             
+            # Subir archivos con actualización automática al terminar
             archivos_subidos = st.file_uploader("Sube tus apuntes (PDF o Audio)", type=["pdf", "mp3", "m4a", "wav"], accept_multiple_files=True)
+            
+            # Detectar si se han subido archivos nuevos
+            cambio_detectado = False
             if archivos_subidos:
                 for archivo in archivos_subidos:
                     ruta_archivo = ruta_asig / archivo.name
-                    with open(ruta_archivo, "wb") as f:
-                        f.write(archivo.getbuffer())
-                st.success("¡Materiales guardados!")
+                    if not ruta_archivo.exists():
+                        with open(ruta_archivo, "wb") as f:
+                            f.write(archivo.getbuffer())
+                        cambio_detectado = True
 
-            materiales = [f.name for f in ruta_asig.iterdir() if f.is_file()]
+            materiales = sorted([f.name for f in ruta_asig.iterdir() if f.is_file()])
+            
+            # Control de cambios en archivos (añadidos o borrados)
+            clave_cache_archivos = f"cache_{asig_elegida}"
+            if clave_cache_archivos not in st.session_state:
+                st.session_state[clave_cache_archivos] = []
+
+            if materiales != st.session_state[clave_cache_archivos] or cambio_detectado:
+                st.session_state[clave_cache_archivos] = materiales
+                cambio_detectado = True
+
             if materiales:
-                st.write("📄 **Archivos disponibles:**")
-                for mat in materiales:
-                    st.text(f"• {mat}")
+                st.write("📄 **Archivos activos:**")
+                cols_archivos = st.columns(len(materiales))
+                for i, mat in enumerate(materiales):
+                    with cols_archivos[i % len(cols_archivos)]:
+                        st.caption(f"• {mat}")
+                        if st.button(f"🗑️ Borrar {mat[:10]}...", key=f"del_{mat}"):
+                            (ruta_asig / mat).unlink(missing_ok=True)
+                            st.rerun()
+
+                # --- APUNTES DINÁMICOS AUTOMÁTICOS Y VISUALES ---
+                st.markdown("---")
+                st.subheader("✨ Apuntes Dinámicos y Visuales (Actualización Automática)")
                 
-                if st.button("✨ Generar Apuntes Dinámicos con IA") and client:
-                    with st.spinner("Chopi está leyendo y estructurando los apuntes en esquemas visuales..."):
-                        prompt_apuntes = f"Actúa como un profesor experto. Genera apuntes visuales, esquemáticos y estructurados con gráficos en texto para la asignatura {asig_elegida}, basándote en que disponemos de estos archivos: {', '.join(materiales)}."
+                if client:
+                    with st.spinner("🔄 Chopi está procesando los cambios y rediseñando los apuntes visuales..."):
+                        prompt_apuntes = f"""
+                        Actúa como un profesor catedrático de Historia y experto en diseño pedagógico. 
+                        Genera unos apuntes sumamente **visuales, atractivos y estructurados** para la asignatura {asig_elegida}, basándote estrictamente en los materiales disponibles: {', '.join(materiales)}.
                         
-                        # MODELO CORREGIDO A 3.5-flash:
+                        Usa obligatoriamente:
+                        1. **Estructura en Tarjetas y Bloques Markdown** (con negritas, iconos y viñetas cuidadas).
+                        2. **Tablas comparativas** si el tema lo requiere.
+                        3. **Esquemas conceptuales visuales** utilizando cajas de texto o flujos claros en texto enriquecido.
+                        4. Explicaciones rigurosas de nivel académico.
+                        """
+                        
                         respuesta = client.models.generate_content(
                             model='gemini-3.5-flash',
                             contents=prompt_apuntes
                         )
-                        st.markdown("### 📋 Apuntes Dinámicos Generados")
-                        st.markdown(respuesta.text)
+                        
+                        st.markdown(f"""
+                            <div class="apunte-box">
+                                {respuesta.text}
+                            </div>
+                        """, unsafe_allow_html=True)
             else:
-                st.info("Sube algún archivo para activar los apuntes dinámicos.")
+                st.info("Sube tu primer archivo (PDF o audio) y los apuntes visuales se generarán automáticamente aquí al instante.")
 
     elif menu == "✍️ Súper Exámenes Pro":
         st.subheader("🎯 Creador de Exámenes Maestros")
